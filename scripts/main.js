@@ -1,5 +1,8 @@
+
+
 var serial; // variable to hold an instance of the serialport library
-var portName = "COM3"; //rename to the name of your port
+// var portName = "COM3"; //rename to the name of your port
+var portName = "/dev/cu.usbmodem141401";
 var dataarray = []; //some data coming in over serial!
 
 // Config
@@ -11,7 +14,7 @@ const BOSS_SPAWN_DELAY = 120;
 const INVULN_TIME = 20;
 let MAP_HEIGHT = 650;
 const MODEL_LINE_ALPHA = 127;
-const NUM_STARS = 300;
+// const NUM_STARS = 300;
 const PLAYER_FIRE_RATE = 8;
 const PLAYER_HP = 9;
 const PLAYER_RADIUS = 6;
@@ -62,7 +65,8 @@ let walls;
 let curLevel;
 let level;
 let levelScore;
-let paused = false;
+let paused = true;
+let gameover = true;
 let score;
 let scoreMult;
 let scoreToAdd;
@@ -222,6 +226,7 @@ function loadLevel() {
 
 // Respawn everything for current level
 function reloadLevel() {
+  paused = true;
   curLevel = LEVEL[level];
   toSpawn = curLevel.spawnCount;
   toSpawnBoss = false;
@@ -244,6 +249,7 @@ function reloadLevel() {
   // Reset score
   score = levelScore;
   scoreToAdd = 0;
+  serial.write(pl.hp);
 }
 
 // Reset game to first level
@@ -328,7 +334,7 @@ function uiBombs() {
 // Draw player health
 function uiHealth() {
   let empty = pl.maxHp - (pl.hp - 1);
-  for (let i = pl.maxHp - 1; i >= 0; i--) {
+  for (let i = pl.maxHp-1; i >= 0; i--) {
     drawHeart(20 + 30 * i, height - UI_PANEL_HEIGHT + 20, --empty > 0);
   }
 }
@@ -411,8 +417,12 @@ function useSlowdown() {
   }
 }
 
-/* Main p5.js functions */
+function startGame() {
+  resetGame();
+  paused = !paused;
+}
 
+/* Main p5.js functions */
 function setup() {
   serial = new p5.SerialPort(); // make a new instance of the serialport library
   serial.on("list", printList); // set a callback function for the serialport list event
@@ -423,6 +433,7 @@ function setup() {
   serial.on("close", portClose); // callback for the port closing
   serial.list(); // list the serial ports
   serial.open(portName); // open a serial port
+
   // Ensure game can fit vertically inside screen
   let maxSize = MAP_HEIGHT + UI_PANEL_HEIGHT + 2;
   let h = windowHeight > maxSize ? maxSize : windowHeight;
@@ -439,9 +450,13 @@ function setup() {
 
   // Begin level
   resetGame();
+  var button = createButton("start");
+  button.mousePressed(startGame);
 }
 
 function draw() {
+// console.log(dataarray);
+
   // Draw the background and starfield
   // flashTime > 0 ? background(255) : background(starfield.bg);
   background(0);
