@@ -14,6 +14,57 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/**
+ * @fileoverview Firebase constants.  Some of these (@defines) can be overridden at compile-time.
+ */
+const CONSTANTS = {
+    /**
+     * @define {boolean} Whether this is the client Node.js SDK.
+     */
+    NODE_CLIENT: false,
+    /**
+     * @define {boolean} Whether this is the Admin Node.js SDK.
+     */
+    NODE_ADMIN: false,
+    /**
+     * Firebase SDK Version
+     */
+    SDK_VERSION: '${JSCORE_VERSION}'
+};
+
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Throws an error if the provided assertion is falsy
+ */
+const assert = function (assertion, message) {
+    if (!assertion) {
+        throw assertionError(message);
+    }
+};
+/**
+ * Returns an Error object suitable for throwing.
+ */
+const assertionError = function (message) {
+    return new Error('Firebase Database (' +
+        CONSTANTS.SDK_VERSION +
+        ') INTERNAL ASSERT FAILED: ' +
+        message);
+};
 
 /**
  * @license
@@ -335,6 +386,78 @@ const base64Decode = function (str) {
 
 /**
  * @license
+ * Copyright 2017 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Do a deep-copy of basic JavaScript Objects or Arrays.
+ */
+function deepCopy(value) {
+    return deepExtend(undefined, value);
+}
+/**
+ * Copy properties from source to target (recursively allows extension
+ * of Objects and Arrays).  Scalar values in the target are over-written.
+ * If target is undefined, an object of the appropriate type will be created
+ * (and returned).
+ *
+ * We recursively copy all child properties of plain Objects in the source- so
+ * that namespace- like dictionaries are merged.
+ *
+ * Note that the target can be a function, in which case the properties in
+ * the source Object are copied onto it as static properties of the Function.
+ *
+ * Note: we don't merge __proto__ to prevent prototype pollution
+ */
+function deepExtend(target, source) {
+    if (!(source instanceof Object)) {
+        return source;
+    }
+    switch (source.constructor) {
+        case Date:
+            // Treat Dates like scalars; if the target date object had any child
+            // properties - they will be lost!
+            const dateValue = source;
+            return new Date(dateValue.getTime());
+        case Object:
+            if (target === undefined) {
+                target = {};
+            }
+            break;
+        case Array:
+            // Always copy the array source and overwrite the target.
+            target = [];
+            break;
+        default:
+            // Not a plain Object - treat it as a scalar.
+            return source;
+    }
+    for (const prop in source) {
+        // use isValidKey to guard against prototype pollution. See https://snyk.io/vuln/SNYK-JS-LODASH-450202
+        if (!source.hasOwnProperty(prop) || !isValidKey(prop)) {
+            continue;
+        }
+        target[prop] = deepExtend(target[prop], source[prop]);
+    }
+    return target;
+}
+function isValidKey(key) {
+    return key !== '__proto__';
+}
+
+/**
+ * @license
  * Copyright 2022 Google LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -629,6 +752,34 @@ function isMobileCordova() {
         !!(window['cordova'] || window['phonegap'] || window['PhoneGap']) &&
         /ios|iphone|ipod|ipad|android|blackberry|iemobile/i.test(getUA()));
 }
+/**
+ * Detect Node.js.
+ *
+ * @return true if Node.js environment is detected or specified.
+ */
+// Node detection logic from: https://github.com/iliakan/detect-node/
+function isNode() {
+    var _a;
+    const forceEnvironment = (_a = getDefaults()) === null || _a === void 0 ? void 0 : _a.forceEnvironment;
+    if (forceEnvironment === 'node') {
+        return true;
+    }
+    else if (forceEnvironment === 'browser') {
+        return false;
+    }
+    try {
+        return (Object.prototype.toString.call(global.process) === '[object process]');
+    }
+    catch (e) {
+        return false;
+    }
+}
+/**
+ * Detect Browser Environment
+ */
+function isBrowser() {
+    return typeof self === 'object' && self.self === self;
+}
 function isBrowserExtension() {
     const runtime = typeof chrome === 'object'
         ? chrome.runtime
@@ -645,10 +796,32 @@ function isBrowserExtension() {
 function isReactNative() {
     return (typeof navigator === 'object' && navigator['product'] === 'ReactNative');
 }
+/** Detects Electron apps. */
+function isElectron() {
+    return getUA().indexOf('Electron/') >= 0;
+}
 /** Detects Internet Explorer. */
 function isIE() {
     const ua = getUA();
     return ua.indexOf('MSIE ') >= 0 || ua.indexOf('Trident/') >= 0;
+}
+/** Detects Universal Windows Platform apps. */
+function isUWP() {
+    return getUA().indexOf('MSAppHost/') >= 0;
+}
+/**
+ * Detect whether the current SDK build is the Node version.
+ *
+ * @return true if it's the Node SDK build.
+ */
+function isNodeSdk() {
+    return CONSTANTS.NODE_CLIENT === true || CONSTANTS.NODE_ADMIN === true;
+}
+/** Returns true if we are running in Safari. */
+function isSafari() {
+    return (!isNode() &&
+        navigator.userAgent.includes('Safari') &&
+        !navigator.userAgent.includes('Chrome'));
 }
 /**
  * This method checks if indexedDB is supported by current browser/service worker context
@@ -695,6 +868,17 @@ function validateIndexedDBOpenable() {
             reject(error);
         }
     });
+}
+/**
+ *
+ * This method checks whether cookie is enabled within current browser
+ * @return true if cookie is enabled within current browser
+ */
+function areCookiesEnabled() {
+    if (typeof navigator === 'undefined' || !navigator.cookieEnabled) {
+        return false;
+    }
+    return true;
 }
 
 /**
@@ -801,6 +985,179 @@ function replaceTemplate(template, data) {
     });
 }
 const PATTERN = /\{\$([^}]+)}/g;
+
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Evaluates a JSON string into a javascript object.
+ *
+ * @param {string} str A string containing JSON.
+ * @return {*} The javascript object representing the specified JSON.
+ */
+function jsonEval(str) {
+    return JSON.parse(str);
+}
+/**
+ * Returns JSON representing a javascript object.
+ * @param {*} data Javascript object to be stringified.
+ * @return {string} The JSON contents of the object.
+ */
+function stringify(data) {
+    return JSON.stringify(data);
+}
+
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Decodes a Firebase auth. token into constituent parts.
+ *
+ * Notes:
+ * - May return with invalid / incomplete claims if there's no native base64 decoding support.
+ * - Doesn't check if the token is actually valid.
+ */
+const decode = function (token) {
+    let header = {}, claims = {}, data = {}, signature = '';
+    try {
+        const parts = token.split('.');
+        header = jsonEval(base64Decode(parts[0]) || '');
+        claims = jsonEval(base64Decode(parts[1]) || '');
+        signature = parts[2];
+        data = claims['d'] || {};
+        delete claims['d'];
+    }
+    catch (e) { }
+    return {
+        header,
+        claims,
+        data,
+        signature
+    };
+};
+/**
+ * Decodes a Firebase auth. token and checks the validity of its time-based claims. Will return true if the
+ * token is within the time window authorized by the 'nbf' (not-before) and 'iat' (issued-at) claims.
+ *
+ * Notes:
+ * - May return a false negative if there's no native base64 decoding support.
+ * - Doesn't check if the token is actually valid.
+ */
+const isValidTimestamp = function (token) {
+    const claims = decode(token).claims;
+    const now = Math.floor(new Date().getTime() / 1000);
+    let validSince = 0, validUntil = 0;
+    if (typeof claims === 'object') {
+        if (claims.hasOwnProperty('nbf')) {
+            validSince = claims['nbf'];
+        }
+        else if (claims.hasOwnProperty('iat')) {
+            validSince = claims['iat'];
+        }
+        if (claims.hasOwnProperty('exp')) {
+            validUntil = claims['exp'];
+        }
+        else {
+            // token will expire after 24h by default
+            validUntil = validSince + 86400;
+        }
+    }
+    return (!!now &&
+        !!validSince &&
+        !!validUntil &&
+        now >= validSince &&
+        now <= validUntil);
+};
+/**
+ * Decodes a Firebase auth. token and returns its issued at time if valid, null otherwise.
+ *
+ * Notes:
+ * - May return null if there's no native base64 decoding support.
+ * - Doesn't check if the token is actually valid.
+ */
+const issuedAtTime = function (token) {
+    const claims = decode(token).claims;
+    if (typeof claims === 'object' && claims.hasOwnProperty('iat')) {
+        return claims['iat'];
+    }
+    return null;
+};
+/**
+ * Decodes a Firebase auth. token and checks the validity of its format. Expects a valid issued-at time.
+ *
+ * Notes:
+ * - May return a false negative if there's no native base64 decoding support.
+ * - Doesn't check if the token is actually valid.
+ */
+const isValidFormat = function (token) {
+    const decoded = decode(token), claims = decoded.claims;
+    return !!claims && typeof claims === 'object' && claims.hasOwnProperty('iat');
+};
+/**
+ * Attempts to peer into an auth token and determine if it's an admin auth token by looking at the claims portion.
+ *
+ * Notes:
+ * - May return a false negative if there's no native base64 decoding support.
+ * - Doesn't check if the token is actually valid.
+ */
+const isAdmin = function (token) {
+    const claims = decode(token).claims;
+    return typeof claims === 'object' && claims['admin'] === true;
+};
+
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+function contains(obj, key) {
+    return Object.prototype.hasOwnProperty.call(obj, key);
+}
+function safeGet(obj, key) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        return obj[key];
+    }
+    else {
+        return undefined;
+    }
+}
 function isEmpty(obj) {
     for (const key in obj) {
         if (Object.prototype.hasOwnProperty.call(obj, key)) {
@@ -808,6 +1165,15 @@ function isEmpty(obj) {
         }
     }
     return true;
+}
+function map(obj, fn, contextObj) {
+    const res = {};
+    for (const key in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+            res[key] = fn.call(contextObj, obj[key], key, obj);
+        }
+    }
+    return res;
 }
 /**
  * Deep equal two objects. Support Arrays and Objects.
@@ -846,6 +1212,33 @@ function isObject(thing) {
 
 /**
  * @license
+ * Copyright 2022 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Rejects if the given promise doesn't resolve in timeInMS milliseconds.
+ * @internal
+ */
+function promiseWithTimeout(promise, timeInMS = 2000) {
+    const deferredPromise = new Deferred();
+    setTimeout(() => deferredPromise.reject('timeout!'), timeInMS);
+    promise.then(deferredPromise.resolve, deferredPromise.reject);
+    return deferredPromise.promise;
+}
+
+/**
+ * @license
  * Copyright 2017 Google LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -878,6 +1271,288 @@ function querystring(querystringParams) {
         }
     }
     return params.length ? '&' + params.join('&') : '';
+}
+/**
+ * Decodes a querystring (e.g. ?arg=val&arg2=val2) into a params object
+ * (e.g. {arg: 'val', arg2: 'val2'})
+ */
+function querystringDecode(querystring) {
+    const obj = {};
+    const tokens = querystring.replace(/^\?/, '').split('&');
+    tokens.forEach(token => {
+        if (token) {
+            const [key, value] = token.split('=');
+            obj[decodeURIComponent(key)] = decodeURIComponent(value);
+        }
+    });
+    return obj;
+}
+/**
+ * Extract the query string part of a URL, including the leading question mark (if present).
+ */
+function extractQuerystring(url) {
+    const queryStart = url.indexOf('?');
+    if (!queryStart) {
+        return '';
+    }
+    const fragmentStart = url.indexOf('#', queryStart);
+    return url.substring(queryStart, fragmentStart > 0 ? fragmentStart : undefined);
+}
+
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * @fileoverview SHA-1 cryptographic hash.
+ * Variable names follow the notation in FIPS PUB 180-3:
+ * http://csrc.nist.gov/publications/fips/fips180-3/fips180-3_final.pdf.
+ *
+ * Usage:
+ *   var sha1 = new sha1();
+ *   sha1.update(bytes);
+ *   var hash = sha1.digest();
+ *
+ * Performance:
+ *   Chrome 23:   ~400 Mbit/s
+ *   Firefox 16:  ~250 Mbit/s
+ *
+ */
+/**
+ * SHA-1 cryptographic hash constructor.
+ *
+ * The properties declared here are discussed in the above algorithm document.
+ * @constructor
+ * @final
+ * @struct
+ */
+class Sha1 {
+    constructor() {
+        /**
+         * Holds the previous values of accumulated variables a-e in the compress_
+         * function.
+         * @private
+         */
+        this.chain_ = [];
+        /**
+         * A buffer holding the partially computed hash result.
+         * @private
+         */
+        this.buf_ = [];
+        /**
+         * An array of 80 bytes, each a part of the message to be hashed.  Referred to
+         * as the message schedule in the docs.
+         * @private
+         */
+        this.W_ = [];
+        /**
+         * Contains data needed to pad messages less than 64 bytes.
+         * @private
+         */
+        this.pad_ = [];
+        /**
+         * @private {number}
+         */
+        this.inbuf_ = 0;
+        /**
+         * @private {number}
+         */
+        this.total_ = 0;
+        this.blockSize = 512 / 8;
+        this.pad_[0] = 128;
+        for (let i = 1; i < this.blockSize; ++i) {
+            this.pad_[i] = 0;
+        }
+        this.reset();
+    }
+    reset() {
+        this.chain_[0] = 0x67452301;
+        this.chain_[1] = 0xefcdab89;
+        this.chain_[2] = 0x98badcfe;
+        this.chain_[3] = 0x10325476;
+        this.chain_[4] = 0xc3d2e1f0;
+        this.inbuf_ = 0;
+        this.total_ = 0;
+    }
+    /**
+     * Internal compress helper function.
+     * @param buf Block to compress.
+     * @param offset Offset of the block in the buffer.
+     * @private
+     */
+    compress_(buf, offset) {
+        if (!offset) {
+            offset = 0;
+        }
+        const W = this.W_;
+        // get 16 big endian words
+        if (typeof buf === 'string') {
+            for (let i = 0; i < 16; i++) {
+                // TODO(user): [bug 8140122] Recent versions of Safari for Mac OS and iOS
+                // have a bug that turns the post-increment ++ operator into pre-increment
+                // during JIT compilation.  We have code that depends heavily on SHA-1 for
+                // correctness and which is affected by this bug, so I've removed all uses
+                // of post-increment ++ in which the result value is used.  We can revert
+                // this change once the Safari bug
+                // (https://bugs.webkit.org/show_bug.cgi?id=109036) has been fixed and
+                // most clients have been updated.
+                W[i] =
+                    (buf.charCodeAt(offset) << 24) |
+                        (buf.charCodeAt(offset + 1) << 16) |
+                        (buf.charCodeAt(offset + 2) << 8) |
+                        buf.charCodeAt(offset + 3);
+                offset += 4;
+            }
+        }
+        else {
+            for (let i = 0; i < 16; i++) {
+                W[i] =
+                    (buf[offset] << 24) |
+                        (buf[offset + 1] << 16) |
+                        (buf[offset + 2] << 8) |
+                        buf[offset + 3];
+                offset += 4;
+            }
+        }
+        // expand to 80 words
+        for (let i = 16; i < 80; i++) {
+            const t = W[i - 3] ^ W[i - 8] ^ W[i - 14] ^ W[i - 16];
+            W[i] = ((t << 1) | (t >>> 31)) & 0xffffffff;
+        }
+        let a = this.chain_[0];
+        let b = this.chain_[1];
+        let c = this.chain_[2];
+        let d = this.chain_[3];
+        let e = this.chain_[4];
+        let f, k;
+        // TODO(user): Try to unroll this loop to speed up the computation.
+        for (let i = 0; i < 80; i++) {
+            if (i < 40) {
+                if (i < 20) {
+                    f = d ^ (b & (c ^ d));
+                    k = 0x5a827999;
+                }
+                else {
+                    f = b ^ c ^ d;
+                    k = 0x6ed9eba1;
+                }
+            }
+            else {
+                if (i < 60) {
+                    f = (b & c) | (d & (b | c));
+                    k = 0x8f1bbcdc;
+                }
+                else {
+                    f = b ^ c ^ d;
+                    k = 0xca62c1d6;
+                }
+            }
+            const t = (((a << 5) | (a >>> 27)) + f + e + k + W[i]) & 0xffffffff;
+            e = d;
+            d = c;
+            c = ((b << 30) | (b >>> 2)) & 0xffffffff;
+            b = a;
+            a = t;
+        }
+        this.chain_[0] = (this.chain_[0] + a) & 0xffffffff;
+        this.chain_[1] = (this.chain_[1] + b) & 0xffffffff;
+        this.chain_[2] = (this.chain_[2] + c) & 0xffffffff;
+        this.chain_[3] = (this.chain_[3] + d) & 0xffffffff;
+        this.chain_[4] = (this.chain_[4] + e) & 0xffffffff;
+    }
+    update(bytes, length) {
+        // TODO(johnlenz): tighten the function signature and remove this check
+        if (bytes == null) {
+            return;
+        }
+        if (length === undefined) {
+            length = bytes.length;
+        }
+        const lengthMinusBlock = length - this.blockSize;
+        let n = 0;
+        // Using local instead of member variables gives ~5% speedup on Firefox 16.
+        const buf = this.buf_;
+        let inbuf = this.inbuf_;
+        // The outer while loop should execute at most twice.
+        while (n < length) {
+            // When we have no data in the block to top up, we can directly process the
+            // input buffer (assuming it contains sufficient data). This gives ~25%
+            // speedup on Chrome 23 and ~15% speedup on Firefox 16, but requires that
+            // the data is provided in large chunks (or in multiples of 64 bytes).
+            if (inbuf === 0) {
+                while (n <= lengthMinusBlock) {
+                    this.compress_(bytes, n);
+                    n += this.blockSize;
+                }
+            }
+            if (typeof bytes === 'string') {
+                while (n < length) {
+                    buf[inbuf] = bytes.charCodeAt(n);
+                    ++inbuf;
+                    ++n;
+                    if (inbuf === this.blockSize) {
+                        this.compress_(buf);
+                        inbuf = 0;
+                        // Jump to the outer loop so we use the full-block optimization.
+                        break;
+                    }
+                }
+            }
+            else {
+                while (n < length) {
+                    buf[inbuf] = bytes[n];
+                    ++inbuf;
+                    ++n;
+                    if (inbuf === this.blockSize) {
+                        this.compress_(buf);
+                        inbuf = 0;
+                        // Jump to the outer loop so we use the full-block optimization.
+                        break;
+                    }
+                }
+            }
+        }
+        this.inbuf_ = inbuf;
+        this.total_ += length;
+    }
+    /** @override */
+    digest() {
+        const digest = [];
+        let totalBits = this.total_ * 8;
+        // Add pad 0x80 0x00*.
+        if (this.inbuf_ < 56) {
+            this.update(this.pad_, 56 - this.inbuf_);
+        }
+        else {
+            this.update(this.pad_, this.blockSize - (this.inbuf_ - 56));
+        }
+        // Add # bits.
+        for (let i = this.blockSize - 1; i >= 56; i--) {
+            this.buf_[i] = totalBits & 255;
+            totalBits /= 256; // Don't use bit-shifting here!
+        }
+        this.compress_(this.buf_);
+        let n = 0;
+        for (let i = 0; i < 5; i++) {
+            for (let j = 24; j >= 0; j -= 8) {
+                digest[n] = (this.chain_[i] >> j) & 255;
+                ++n;
+            }
+        }
+        return digest;
+    }
 }
 
 /**
@@ -1060,6 +1735,21 @@ class ObserverProxy {
         });
     }
 }
+/** Turn synchronous function into one called asynchronously. */
+// eslint-disable-next-line @typescript-eslint/ban-types
+function async(fn, onError) {
+    return (...args) => {
+        Promise.resolve(true)
+            .then(() => {
+            fn(...args);
+        })
+            .catch((error) => {
+            if (onError) {
+                onError(error);
+            }
+        });
+    };
+}
 /**
  * Return true if the object passed in implements any of the named methods.
  */
@@ -1076,6 +1766,321 @@ function implementsAnyMethods(obj, methods) {
 }
 function noop() {
     // do nothing
+}
+
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Check to make sure the appropriate number of arguments are provided for a public function.
+ * Throws an error if it fails.
+ *
+ * @param fnName The function name
+ * @param minCount The minimum number of arguments to allow for the function call
+ * @param maxCount The maximum number of argument to allow for the function call
+ * @param argCount The actual number of arguments provided.
+ */
+const validateArgCount = function (fnName, minCount, maxCount, argCount) {
+    let argError;
+    if (argCount < minCount) {
+        argError = 'at least ' + minCount;
+    }
+    else if (argCount > maxCount) {
+        argError = maxCount === 0 ? 'none' : 'no more than ' + maxCount;
+    }
+    if (argError) {
+        const error = fnName +
+            ' failed: Was called with ' +
+            argCount +
+            (argCount === 1 ? ' argument.' : ' arguments.') +
+            ' Expects ' +
+            argError +
+            '.';
+        throw new Error(error);
+    }
+};
+/**
+ * Generates a string to prefix an error message about failed argument validation
+ *
+ * @param fnName The function name
+ * @param argName The name of the argument
+ * @return The prefix to add to the error thrown for validation.
+ */
+function errorPrefix(fnName, argName) {
+    return `${fnName} failed: ${argName} argument `;
+}
+/**
+ * @param fnName
+ * @param argumentNumber
+ * @param namespace
+ * @param optional
+ */
+function validateNamespace(fnName, namespace, optional) {
+    if (optional && !namespace) {
+        return;
+    }
+    if (typeof namespace !== 'string') {
+        //TODO: I should do more validation here. We only allow certain chars in namespaces.
+        throw new Error(errorPrefix(fnName, 'namespace') + 'must be a valid firebase namespace.');
+    }
+}
+function validateCallback(fnName, argumentName, 
+// eslint-disable-next-line @typescript-eslint/ban-types
+callback, optional) {
+    if (optional && !callback) {
+        return;
+    }
+    if (typeof callback !== 'function') {
+        throw new Error(errorPrefix(fnName, argumentName) + 'must be a valid function.');
+    }
+}
+function validateContextObject(fnName, argumentName, context, optional) {
+    if (optional && !context) {
+        return;
+    }
+    if (typeof context !== 'object' || context === null) {
+        throw new Error(errorPrefix(fnName, argumentName) + 'must be a valid context object.');
+    }
+}
+
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+// Code originally came from goog.crypt.stringToUtf8ByteArray, but for some reason they
+// automatically replaced '\r\n' with '\n', and they didn't handle surrogate pairs,
+// so it's been modified.
+// Note that not all Unicode characters appear as single characters in JavaScript strings.
+// fromCharCode returns the UTF-16 encoding of a character - so some Unicode characters
+// use 2 characters in Javascript.  All 4-byte UTF-8 characters begin with a first
+// character in the range 0xD800 - 0xDBFF (the first character of a so-called surrogate
+// pair).
+// See http://www.ecma-international.org/ecma-262/5.1/#sec-15.1.3
+/**
+ * @param {string} str
+ * @return {Array}
+ */
+const stringToByteArray = function (str) {
+    const out = [];
+    let p = 0;
+    for (let i = 0; i < str.length; i++) {
+        let c = str.charCodeAt(i);
+        // Is this the lead surrogate in a surrogate pair?
+        if (c >= 0xd800 && c <= 0xdbff) {
+            const high = c - 0xd800; // the high 10 bits.
+            i++;
+            assert(i < str.length, 'Surrogate pair missing trail surrogate.');
+            const low = str.charCodeAt(i) - 0xdc00; // the low 10 bits.
+            c = 0x10000 + (high << 10) + low;
+        }
+        if (c < 128) {
+            out[p++] = c;
+        }
+        else if (c < 2048) {
+            out[p++] = (c >> 6) | 192;
+            out[p++] = (c & 63) | 128;
+        }
+        else if (c < 65536) {
+            out[p++] = (c >> 12) | 224;
+            out[p++] = ((c >> 6) & 63) | 128;
+            out[p++] = (c & 63) | 128;
+        }
+        else {
+            out[p++] = (c >> 18) | 240;
+            out[p++] = ((c >> 12) & 63) | 128;
+            out[p++] = ((c >> 6) & 63) | 128;
+            out[p++] = (c & 63) | 128;
+        }
+    }
+    return out;
+};
+/**
+ * Calculate length without actually converting; useful for doing cheaper validation.
+ * @param {string} str
+ * @return {number}
+ */
+const stringLength = function (str) {
+    let p = 0;
+    for (let i = 0; i < str.length; i++) {
+        const c = str.charCodeAt(i);
+        if (c < 128) {
+            p++;
+        }
+        else if (c < 2048) {
+            p += 2;
+        }
+        else if (c >= 0xd800 && c <= 0xdbff) {
+            // Lead surrogate of a surrogate pair.  The pair together will take 4 bytes to represent.
+            p += 4;
+            i++; // skip trail surrogate.
+        }
+        else {
+            p += 3;
+        }
+    }
+    return p;
+};
+
+/**
+ * @license
+ * Copyright 2022 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Copied from https://stackoverflow.com/a/2117523
+ * Generates a new uuid.
+ * @public
+ */
+const uuidv4 = function () {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = (Math.random() * 16) | 0, v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+    });
+};
+
+/**
+ * @license
+ * Copyright 2019 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * The amount of milliseconds to exponentially increase.
+ */
+const DEFAULT_INTERVAL_MILLIS = 1000;
+/**
+ * The factor to backoff by.
+ * Should be a number greater than 1.
+ */
+const DEFAULT_BACKOFF_FACTOR = 2;
+/**
+ * The maximum milliseconds to increase to.
+ *
+ * <p>Visible for testing
+ */
+const MAX_VALUE_MILLIS = 4 * 60 * 60 * 1000; // Four hours, like iOS and Android.
+/**
+ * The percentage of backoff time to randomize by.
+ * See
+ * http://go/safe-client-behavior#step-1-determine-the-appropriate-retry-interval-to-handle-spike-traffic
+ * for context.
+ *
+ * <p>Visible for testing
+ */
+const RANDOM_FACTOR = 0.5;
+/**
+ * Based on the backoff method from
+ * https://github.com/google/closure-library/blob/master/closure/goog/math/exponentialbackoff.js.
+ * Extracted here so we don't need to pass metadata and a stateful ExponentialBackoff object around.
+ */
+function calculateBackoffMillis(backoffCount, intervalMillis = DEFAULT_INTERVAL_MILLIS, backoffFactor = DEFAULT_BACKOFF_FACTOR) {
+    // Calculates an exponentially increasing value.
+    // Deviation: calculates value from count and a constant interval, so we only need to save value
+    // and count to restore state.
+    const currBaseValue = intervalMillis * Math.pow(backoffFactor, backoffCount);
+    // A random "fuzz" to avoid waves of retries.
+    // Deviation: randomFactor is required.
+    const randomWait = Math.round(
+    // A fraction of the backoff value to add/subtract.
+    // Deviation: changes multiplication order to improve readability.
+    RANDOM_FACTOR *
+        currBaseValue *
+        // A random float (rounded to int by Math.round above) in the range [-1, 1]. Determines
+        // if we add or subtract.
+        (Math.random() - 0.5) *
+        2);
+    // Limits backoff to max to avoid effectively permanent backoff.
+    return Math.min(MAX_VALUE_MILLIS, currBaseValue + randomWait);
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Provide English ordinal letters after a number
+ */
+function ordinal(i) {
+    if (!Number.isFinite(i)) {
+        return `${i}`;
+    }
+    return i + indicator(i);
+}
+function indicator(i) {
+    i = Math.abs(i);
+    const cent = i % 100;
+    if (cent >= 10 && cent <= 20) {
+        return 'th';
+    }
+    const dec = i % 10;
+    if (dec === 1) {
+        return 'st';
+    }
+    if (dec === 2) {
+        return 'nd';
+    }
+    if (dec === 3) {
+        return 'rd';
+    }
+    return 'th';
 }
 
 /**
@@ -1525,6 +2530,10 @@ class ComponentContainer {
  * limitations under the License.
  */
 /**
+ * A container for all of the Logger instances
+ */
+const instances = [];
+/**
  * The JS SDK supports 5 log levels and also allows a user the ability to
  * silence the logs altogether.
  *
@@ -1609,6 +2618,10 @@ class Logger {
          * The optional, additional, user-defined log handler for the Logger instance.
          */
         this._userLogHandler = null;
+        /**
+         * Capture the current instance for later use
+         */
+        instances.push(this);
     }
     get logLevel() {
         return this._logLevel;
@@ -1661,6 +2674,59 @@ class Logger {
     error(...args) {
         this._userLogHandler && this._userLogHandler(this, LogLevel.ERROR, ...args);
         this._logHandler(this, LogLevel.ERROR, ...args);
+    }
+}
+function setLogLevel$1(level) {
+    instances.forEach(inst => {
+        inst.setLogLevel(level);
+    });
+}
+function setUserLogHandler(logCallback, options) {
+    for (const instance of instances) {
+        let customLogLevel = null;
+        if (options && options.level) {
+            customLogLevel = levelStringToEnum[options.level];
+        }
+        if (logCallback === null) {
+            instance.userLogHandler = null;
+        }
+        else {
+            instance.userLogHandler = (instance, level, ...args) => {
+                const message = args
+                    .map(arg => {
+                    if (arg == null) {
+                        return null;
+                    }
+                    else if (typeof arg === 'string') {
+                        return arg;
+                    }
+                    else if (typeof arg === 'number' || typeof arg === 'boolean') {
+                        return arg.toString();
+                    }
+                    else if (arg instanceof Error) {
+                        return arg.message;
+                    }
+                    else {
+                        try {
+                            return JSON.stringify(arg);
+                        }
+                        catch (ignored) {
+                            return null;
+                        }
+                    }
+                })
+                    .filter(arg => arg)
+                    .join(' ');
+                if (level >= (customLogLevel !== null && customLogLevel !== void 0 ? customLogLevel : instance.logLevel)) {
+                    logCallback({
+                        level: LogLevel[level].toLowerCase(),
+                        message,
+                        args,
+                        type: instance.name
+                    });
+                }
+            };
+        }
     }
 }
 
@@ -1874,6 +2940,17 @@ function openDB(name, version, { blocked, upgrade, blocking, terminated } = {}) 
     })
         .catch(() => { });
     return openPromise;
+}
+/**
+ * Delete a database.
+ *
+ * @param name Name of the database.
+ */
+function deleteDB(name, { blocked } = {}) {
+    const request = indexedDB.deleteDatabase(name);
+    if (blocked)
+        request.addEventListener('blocked', () => blocked());
+    return wrap(request).then(() => undefined);
 }
 
 const readMethods = ['get', 'getKey', 'getAll', 'getAllKeys', 'count'];
@@ -2137,6 +3214,13 @@ function _addComponent(app, component) {
 }
 /**
  *
+ * @internal
+ */
+function _addOrOverwriteComponent(app, component) {
+    app.container.addOrOverwriteComponent(component);
+}
+/**
+ *
  * @param component - the component to register
  * @returns whether or not the component is registered successfully
  *
@@ -2172,6 +3256,25 @@ function _getProvider(app, name) {
         void heartbeatController.triggerHeartbeat();
     }
     return app.container.getProvider(name);
+}
+/**
+ *
+ * @param app - FirebaseApp instance
+ * @param name - service name
+ * @param instanceIdentifier - service instance identifier in case the service supports multiple instances
+ *
+ * @internal
+ */
+function _removeServiceInstance(app, name, instanceIdentifier = DEFAULT_ENTRY_NAME) {
+    _getProvider(app, name).clearInstance(instanceIdentifier);
+}
+/**
+ * Test only
+ *
+ * @internal
+ */
+function _clearComponents() {
+    _components.clear();
 }
 
 /**
@@ -2372,6 +3475,40 @@ function getApp(name = DEFAULT_ENTRY_NAME) {
     return app;
 }
 /**
+ * A (read-only) array of all initialized apps.
+ * @public
+ */
+function getApps() {
+    return Array.from(_apps.values());
+}
+/**
+ * Renders this app unusable and frees the resources of all associated
+ * services.
+ *
+ * @example
+ * ```javascript
+ * deleteApp(app)
+ *   .then(function() {
+ *     console.log("App deleted successfully");
+ *   })
+ *   .catch(function(error) {
+ *     console.log("Error deleting app:", error);
+ *   });
+ * ```
+ *
+ * @public
+ */
+async function deleteApp(app) {
+    const name = app.name;
+    if (_apps.has(name)) {
+        _apps.delete(name);
+        await Promise.all(app.container
+            .getProviders()
+            .map(provider => provider.delete()));
+        app.isDeleted = true;
+    }
+}
+/**
  * Registers a library's name and version for platform logging purposes.
  * @param library - Name of 1p or 3p library (e.g. firestore, angularfire)
  * @param version - Current version of that library.
@@ -2406,6 +3543,31 @@ function registerVersion(libraryKeyOrName, version, variant) {
         return;
     }
     _registerComponent(new Component(`${library}-version`, () => ({ library, version }), "VERSION" /* ComponentType.VERSION */));
+}
+/**
+ * Sets log handler for all Firebase SDKs.
+ * @param logCallback - An optional custom log handler that executes user code whenever
+ * the Firebase SDK makes a logging call.
+ *
+ * @public
+ */
+function onLog(logCallback, options) {
+    if (logCallback !== null && typeof logCallback !== 'function') {
+        throw ERROR_FACTORY.create("invalid-log-argument" /* AppError.INVALID_LOG_ARGUMENT */);
+    }
+    setUserLogHandler(logCallback, options);
+}
+/**
+ * Sets log level for all Firebase SDKs.
+ *
+ * All of the log types above the current log level are captured (i.e. if
+ * you set the log level to `info`, errors are logged, but `debug` and
+ * `verbose` logs are not).
+ *
+ * @public
+ */
+function setLogLevel(logLevel) {
+    setLogLevel$1(logLevel);
 }
 
 /**
@@ -2796,6 +3958,33 @@ LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
 OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 ***************************************************************************** */
+/* global Reflect, Promise */
+
+var extendStatics = function(d, b) {
+    extendStatics = Object.setPrototypeOf ||
+        ({ __proto__: [] } instanceof Array && function (d, b) { d.__proto__ = b; }) ||
+        function (d, b) { for (var p in b) if (Object.prototype.hasOwnProperty.call(b, p)) d[p] = b[p]; };
+    return extendStatics(d, b);
+};
+
+function __extends(d, b) {
+    if (typeof b !== "function" && b !== null)
+        throw new TypeError("Class extends value " + String(b) + " is not a constructor or null");
+    extendStatics(d, b);
+    function __() { this.constructor = d; }
+    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
+}
+
+var __assign = function() {
+    __assign = Object.assign || function __assign(t) {
+        for (var s, i = 1, n = arguments.length; i < n; i++) {
+            s = arguments[i];
+            for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p)) t[p] = s[p];
+        }
+        return t;
+    };
+    return __assign.apply(this, arguments);
+};
 
 function __rest(s, e) {
     var t = {};
@@ -2809,6 +3998,508 @@ function __rest(s, e) {
     return t;
 }
 
+function __decorate(decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+}
+
+function __param(paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+}
+
+function __esDecorate(ctor, descriptorIn, decorators, contextIn, initializers, extraInitializers) {
+    function accept(f) { if (f !== void 0 && typeof f !== "function") throw new TypeError("Function expected"); return f; }
+    var kind = contextIn.kind, key = kind === "getter" ? "get" : kind === "setter" ? "set" : "value";
+    var target = !descriptorIn && ctor ? contextIn["static"] ? ctor : ctor.prototype : null;
+    var descriptor = descriptorIn || (target ? Object.getOwnPropertyDescriptor(target, contextIn.name) : {});
+    var _, done = false;
+    for (var i = decorators.length - 1; i >= 0; i--) {
+        var context = {};
+        for (var p in contextIn) context[p] = p === "access" ? {} : contextIn[p];
+        for (var p in contextIn.access) context.access[p] = contextIn.access[p];
+        context.addInitializer = function (f) { if (done) throw new TypeError("Cannot add initializers after decoration has completed"); extraInitializers.push(accept(f || null)); };
+        var result = (0, decorators[i])(kind === "accessor" ? { get: descriptor.get, set: descriptor.set } : descriptor[key], context);
+        if (kind === "accessor") {
+            if (result === void 0) continue;
+            if (result === null || typeof result !== "object") throw new TypeError("Object expected");
+            if (_ = accept(result.get)) descriptor.get = _;
+            if (_ = accept(result.set)) descriptor.set = _;
+            if (_ = accept(result.init)) initializers.push(_);
+        }
+        else if (_ = accept(result)) {
+            if (kind === "field") initializers.push(_);
+            else descriptor[key] = _;
+        }
+    }
+    if (target) Object.defineProperty(target, contextIn.name, descriptor);
+    done = true;
+};
+
+function __runInitializers(thisArg, initializers, value) {
+    var useValue = arguments.length > 2;
+    for (var i = 0; i < initializers.length; i++) {
+        value = useValue ? initializers[i].call(thisArg, value) : initializers[i].call(thisArg);
+    }
+    return useValue ? value : void 0;
+};
+
+function __propKey(x) {
+    return typeof x === "symbol" ? x : "".concat(x);
+};
+
+function __setFunctionName(f, name, prefix) {
+    if (typeof name === "symbol") name = name.description ? "[".concat(name.description, "]") : "";
+    return Object.defineProperty(f, "name", { configurable: true, value: prefix ? "".concat(prefix, " ", name) : name });
+};
+
+function __metadata(metadataKey, metadataValue) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(metadataKey, metadataValue);
+}
+
+function __awaiter(thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+}
+
+function __generator(thisArg, body) {
+    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g;
+    return g = { next: verb(0), "throw": verb(1), "return": verb(2) }, typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+    function verb(n) { return function (v) { return step([n, v]); }; }
+    function step(op) {
+        if (f) throw new TypeError("Generator is already executing.");
+        while (g && (g = 0, op[0] && (_ = 0)), _) try {
+            if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+            if (y = 0, t) op = [op[0] & 2, t.value];
+            switch (op[0]) {
+                case 0: case 1: t = op; break;
+                case 4: _.label++; return { value: op[1], done: false };
+                case 5: _.label++; y = op[1]; op = [0]; continue;
+                case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                default:
+                    if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                    if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                    if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                    if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                    if (t[2]) _.ops.pop();
+                    _.trys.pop(); continue;
+            }
+            op = body.call(thisArg, _);
+        } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+        if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+    }
+}
+
+var __createBinding = Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+        desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+});
+
+function __exportStar(m, o) {
+    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(o, p)) __createBinding(o, m, p);
+}
+
+function __values(o) {
+    var s = typeof Symbol === "function" && Symbol.iterator, m = s && o[s], i = 0;
+    if (m) return m.call(o);
+    if (o && typeof o.length === "number") return {
+        next: function () {
+            if (o && i >= o.length) o = void 0;
+            return { value: o && o[i++], done: !o };
+        }
+    };
+    throw new TypeError(s ? "Object is not iterable." : "Symbol.iterator is not defined.");
+}
+
+function __read(o, n) {
+    var m = typeof Symbol === "function" && o[Symbol.iterator];
+    if (!m) return o;
+    var i = m.call(o), r, ar = [], e;
+    try {
+        while ((n === void 0 || n-- > 0) && !(r = i.next()).done) ar.push(r.value);
+    }
+    catch (error) { e = { error: error }; }
+    finally {
+        try {
+            if (r && !r.done && (m = i["return"])) m.call(i);
+        }
+        finally { if (e) throw e.error; }
+    }
+    return ar;
+}
+
+/** @deprecated */
+function __spread() {
+    for (var ar = [], i = 0; i < arguments.length; i++)
+        ar = ar.concat(__read(arguments[i]));
+    return ar;
+}
+
+/** @deprecated */
+function __spreadArrays() {
+    for (var s = 0, i = 0, il = arguments.length; i < il; i++) s += arguments[i].length;
+    for (var r = Array(s), k = 0, i = 0; i < il; i++)
+        for (var a = arguments[i], j = 0, jl = a.length; j < jl; j++, k++)
+            r[k] = a[j];
+    return r;
+}
+
+function __spreadArray(to, from, pack) {
+    if (pack || arguments.length === 2) for (var i = 0, l = from.length, ar; i < l; i++) {
+        if (ar || !(i in from)) {
+            if (!ar) ar = Array.prototype.slice.call(from, 0, i);
+            ar[i] = from[i];
+        }
+    }
+    return to.concat(ar || Array.prototype.slice.call(from));
+}
+
+function __await(v) {
+    return this instanceof __await ? (this.v = v, this) : new __await(v);
+}
+
+function __asyncGenerator(thisArg, _arguments, generator) {
+    if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
+    var g = generator.apply(thisArg, _arguments || []), i, q = [];
+    return i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i;
+    function verb(n) { if (g[n]) i[n] = function (v) { return new Promise(function (a, b) { q.push([n, v, a, b]) > 1 || resume(n, v); }); }; }
+    function resume(n, v) { try { step(g[n](v)); } catch (e) { settle(q[0][3], e); } }
+    function step(r) { r.value instanceof __await ? Promise.resolve(r.value.v).then(fulfill, reject) : settle(q[0][2], r); }
+    function fulfill(value) { resume("next", value); }
+    function reject(value) { resume("throw", value); }
+    function settle(f, v) { if (f(v), q.shift(), q.length) resume(q[0][0], q[0][1]); }
+}
+
+function __asyncDelegator(o) {
+    var i, p;
+    return i = {}, verb("next"), verb("throw", function (e) { throw e; }), verb("return"), i[Symbol.iterator] = function () { return this; }, i;
+    function verb(n, f) { i[n] = o[n] ? function (v) { return (p = !p) ? { value: __await(o[n](v)), done: false } : f ? f(v) : v; } : f; }
+}
+
+function __asyncValues(o) {
+    if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
+    var m = o[Symbol.asyncIterator], i;
+    return m ? m.call(o) : (o = typeof __values === "function" ? __values(o) : o[Symbol.iterator](), i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i);
+    function verb(n) { i[n] = o[n] && function (v) { return new Promise(function (resolve, reject) { v = o[n](v), settle(resolve, reject, v.done, v.value); }); }; }
+    function settle(resolve, reject, d, v) { Promise.resolve(v).then(function(v) { resolve({ value: v, done: d }); }, reject); }
+}
+
+function __makeTemplateObject(cooked, raw) {
+    if (Object.defineProperty) { Object.defineProperty(cooked, "raw", { value: raw }); } else { cooked.raw = raw; }
+    return cooked;
+};
+
+var __setModuleDefault = Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+};
+
+function __importStar(mod) {
+    if (mod && mod.__esModule) return mod;
+    var result = {};
+    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
+    __setModuleDefault(result, mod);
+    return result;
+}
+
+function __importDefault(mod) {
+    return (mod && mod.__esModule) ? mod : { default: mod };
+}
+
+function __classPrivateFieldGet(receiver, state, kind, f) {
+    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a getter");
+    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot read private member from an object whose class did not declare it");
+    return kind === "m" ? f : kind === "a" ? f.call(receiver) : f ? f.value : state.get(receiver);
+}
+
+function __classPrivateFieldSet(receiver, state, value, kind, f) {
+    if (kind === "m") throw new TypeError("Private method is not writable");
+    if (kind === "a" && !f) throw new TypeError("Private accessor was defined without a setter");
+    if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
+    return (kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value)), value;
+}
+
+function __classPrivateFieldIn(state, receiver) {
+    if (receiver === null || (typeof receiver !== "object" && typeof receiver !== "function")) throw new TypeError("Cannot use 'in' operator on non-object");
+    return typeof state === "function" ? receiver === state : state.has(receiver);
+}
+
+/**
+ * @license
+ * Copyright 2021 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * An enum of factors that may be used for multifactor authentication.
+ *
+ * @public
+ */
+const FactorId = {
+    /** Phone as second factor */
+    PHONE: 'phone'
+};
+/**
+ * Enumeration of supported providers.
+ *
+ * @public
+ */
+const ProviderId = {
+    /** Facebook provider ID */
+    FACEBOOK: 'facebook.com',
+    /** GitHub provider ID */
+    GITHUB: 'github.com',
+    /** Google provider ID */
+    GOOGLE: 'google.com',
+    /** Password provider */
+    PASSWORD: 'password',
+    /** Phone provider */
+    PHONE: 'phone',
+    /** Twitter provider ID */
+    TWITTER: 'twitter.com'
+};
+/**
+ * Enumeration of supported sign-in methods.
+ *
+ * @public
+ */
+const SignInMethod = {
+    /** Email link sign in method */
+    EMAIL_LINK: 'emailLink',
+    /** Email/password sign in method */
+    EMAIL_PASSWORD: 'password',
+    /** Facebook sign in method */
+    FACEBOOK: 'facebook.com',
+    /** GitHub sign in method */
+    GITHUB: 'github.com',
+    /** Google sign in method */
+    GOOGLE: 'google.com',
+    /** Phone sign in method */
+    PHONE: 'phone',
+    /** Twitter sign in method */
+    TWITTER: 'twitter.com'
+};
+/**
+ * Enumeration of supported operation types.
+ *
+ * @public
+ */
+const OperationType = {
+    /** Operation involving linking an additional provider to an already signed-in user. */
+    LINK: 'link',
+    /** Operation involving using a provider to reauthenticate an already signed-in user. */
+    REAUTHENTICATE: 'reauthenticate',
+    /** Operation involving signing in a user. */
+    SIGN_IN: 'signIn'
+};
+/**
+ * An enumeration of the possible email action types.
+ *
+ * @public
+ */
+const ActionCodeOperation = {
+    /** The email link sign-in action. */
+    EMAIL_SIGNIN: 'EMAIL_SIGNIN',
+    /** The password reset action. */
+    PASSWORD_RESET: 'PASSWORD_RESET',
+    /** The email revocation action. */
+    RECOVER_EMAIL: 'RECOVER_EMAIL',
+    /** The revert second factor addition email action. */
+    REVERT_SECOND_FACTOR_ADDITION: 'REVERT_SECOND_FACTOR_ADDITION',
+    /** The revert second factor addition email action. */
+    VERIFY_AND_CHANGE_EMAIL: 'VERIFY_AND_CHANGE_EMAIL',
+    /** The email verification action. */
+    VERIFY_EMAIL: 'VERIFY_EMAIL'
+};
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+function _debugErrorMap() {
+    return {
+        ["admin-restricted-operation" /* AuthErrorCode.ADMIN_ONLY_OPERATION */]: 'This operation is restricted to administrators only.',
+        ["argument-error" /* AuthErrorCode.ARGUMENT_ERROR */]: '',
+        ["app-not-authorized" /* AuthErrorCode.APP_NOT_AUTHORIZED */]: "This app, identified by the domain where it's hosted, is not " +
+            'authorized to use Firebase Authentication with the provided API key. ' +
+            'Review your key configuration in the Google API console.',
+        ["app-not-installed" /* AuthErrorCode.APP_NOT_INSTALLED */]: 'The requested mobile application corresponding to the identifier (' +
+            'Android package name or iOS bundle ID) provided is not installed on ' +
+            'this device.',
+        ["captcha-check-failed" /* AuthErrorCode.CAPTCHA_CHECK_FAILED */]: 'The reCAPTCHA response token provided is either invalid, expired, ' +
+            'already used or the domain associated with it does not match the list ' +
+            'of whitelisted domains.',
+        ["code-expired" /* AuthErrorCode.CODE_EXPIRED */]: 'The SMS code has expired. Please re-send the verification code to try ' +
+            'again.',
+        ["cordova-not-ready" /* AuthErrorCode.CORDOVA_NOT_READY */]: 'Cordova framework is not ready.',
+        ["cors-unsupported" /* AuthErrorCode.CORS_UNSUPPORTED */]: 'This browser is not supported.',
+        ["credential-already-in-use" /* AuthErrorCode.CREDENTIAL_ALREADY_IN_USE */]: 'This credential is already associated with a different user account.',
+        ["custom-token-mismatch" /* AuthErrorCode.CREDENTIAL_MISMATCH */]: 'The custom token corresponds to a different audience.',
+        ["requires-recent-login" /* AuthErrorCode.CREDENTIAL_TOO_OLD_LOGIN_AGAIN */]: 'This operation is sensitive and requires recent authentication. Log in ' +
+            'again before retrying this request.',
+        ["dependent-sdk-initialized-before-auth" /* AuthErrorCode.DEPENDENT_SDK_INIT_BEFORE_AUTH */]: 'Another Firebase SDK was initialized and is trying to use Auth before Auth is ' +
+            'initialized. Please be sure to call `initializeAuth` or `getAuth` before ' +
+            'starting any other Firebase SDK.',
+        ["dynamic-link-not-activated" /* AuthErrorCode.DYNAMIC_LINK_NOT_ACTIVATED */]: 'Please activate Dynamic Links in the Firebase Console and agree to the terms and ' +
+            'conditions.',
+        ["email-change-needs-verification" /* AuthErrorCode.EMAIL_CHANGE_NEEDS_VERIFICATION */]: 'Multi-factor users must always have a verified email.',
+        ["email-already-in-use" /* AuthErrorCode.EMAIL_EXISTS */]: 'The email address is already in use by another account.',
+        ["emulator-config-failed" /* AuthErrorCode.EMULATOR_CONFIG_FAILED */]: 'Auth instance has already been used to make a network call. Auth can ' +
+            'no longer be configured to use the emulator. Try calling ' +
+            '"connectAuthEmulator()" sooner.',
+        ["expired-action-code" /* AuthErrorCode.EXPIRED_OOB_CODE */]: 'The action code has expired.',
+        ["cancelled-popup-request" /* AuthErrorCode.EXPIRED_POPUP_REQUEST */]: 'This operation has been cancelled due to another conflicting popup being opened.',
+        ["internal-error" /* AuthErrorCode.INTERNAL_ERROR */]: 'An internal AuthError has occurred.',
+        ["invalid-app-credential" /* AuthErrorCode.INVALID_APP_CREDENTIAL */]: 'The phone verification request contains an invalid application verifier.' +
+            ' The reCAPTCHA token response is either invalid or expired.',
+        ["invalid-app-id" /* AuthErrorCode.INVALID_APP_ID */]: 'The mobile app identifier is not registed for the current project.',
+        ["invalid-user-token" /* AuthErrorCode.INVALID_AUTH */]: "This user's credential isn't valid for this project. This can happen " +
+            "if the user's token has been tampered with, or if the user isn't for " +
+            'the project associated with this API key.',
+        ["invalid-auth-event" /* AuthErrorCode.INVALID_AUTH_EVENT */]: 'An internal AuthError has occurred.',
+        ["invalid-verification-code" /* AuthErrorCode.INVALID_CODE */]: 'The SMS verification code used to create the phone auth credential is ' +
+            'invalid. Please resend the verification code sms and be sure to use the ' +
+            'verification code provided by the user.',
+        ["invalid-continue-uri" /* AuthErrorCode.INVALID_CONTINUE_URI */]: 'The continue URL provided in the request is invalid.',
+        ["invalid-cordova-configuration" /* AuthErrorCode.INVALID_CORDOVA_CONFIGURATION */]: 'The following Cordova plugins must be installed to enable OAuth sign-in: ' +
+            'cordova-plugin-buildinfo, cordova-universal-links-plugin, ' +
+            'cordova-plugin-browsertab, cordova-plugin-inappbrowser and ' +
+            'cordova-plugin-customurlscheme.',
+        ["invalid-custom-token" /* AuthErrorCode.INVALID_CUSTOM_TOKEN */]: 'The custom token format is incorrect. Please check the documentation.',
+        ["invalid-dynamic-link-domain" /* AuthErrorCode.INVALID_DYNAMIC_LINK_DOMAIN */]: 'The provided dynamic link domain is not configured or authorized for the current project.',
+        ["invalid-email" /* AuthErrorCode.INVALID_EMAIL */]: 'The email address is badly formatted.',
+        ["invalid-emulator-scheme" /* AuthErrorCode.INVALID_EMULATOR_SCHEME */]: 'Emulator URL must start with a valid scheme (http:// or https://).',
+        ["invalid-api-key" /* AuthErrorCode.INVALID_API_KEY */]: 'Your API key is invalid, please check you have copied it correctly.',
+        ["invalid-cert-hash" /* AuthErrorCode.INVALID_CERT_HASH */]: 'The SHA-1 certificate hash provided is invalid.',
+        ["invalid-credential" /* AuthErrorCode.INVALID_IDP_RESPONSE */]: 'The supplied auth credential is malformed or has expired.',
+        ["invalid-message-payload" /* AuthErrorCode.INVALID_MESSAGE_PAYLOAD */]: 'The email template corresponding to this action contains invalid characters in its message. ' +
+            'Please fix by going to the Auth email templates section in the Firebase Console.',
+        ["invalid-multi-factor-session" /* AuthErrorCode.INVALID_MFA_SESSION */]: 'The request does not contain a valid proof of first factor successful sign-in.',
+        ["invalid-oauth-provider" /* AuthErrorCode.INVALID_OAUTH_PROVIDER */]: 'EmailAuthProvider is not supported for this operation. This operation ' +
+            'only supports OAuth providers.',
+        ["invalid-oauth-client-id" /* AuthErrorCode.INVALID_OAUTH_CLIENT_ID */]: 'The OAuth client ID provided is either invalid or does not match the ' +
+            'specified API key.',
+        ["unauthorized-domain" /* AuthErrorCode.INVALID_ORIGIN */]: 'This domain is not authorized for OAuth operations for your Firebase ' +
+            'project. Edit the list of authorized domains from the Firebase console.',
+        ["invalid-action-code" /* AuthErrorCode.INVALID_OOB_CODE */]: 'The action code is invalid. This can happen if the code is malformed, ' +
+            'expired, or has already been used.',
+        ["wrong-password" /* AuthErrorCode.INVALID_PASSWORD */]: 'The password is invalid or the user does not have a password.',
+        ["invalid-persistence-type" /* AuthErrorCode.INVALID_PERSISTENCE */]: 'The specified persistence type is invalid. It can only be local, session or none.',
+        ["invalid-phone-number" /* AuthErrorCode.INVALID_PHONE_NUMBER */]: 'The format of the phone number provided is incorrect. Please enter the ' +
+            'phone number in a format that can be parsed into E.164 format. E.164 ' +
+            'phone numbers are written in the format [+][country code][subscriber ' +
+            'number including area code].',
+        ["invalid-provider-id" /* AuthErrorCode.INVALID_PROVIDER_ID */]: 'The specified provider ID is invalid.',
+        ["invalid-recipient-email" /* AuthErrorCode.INVALID_RECIPIENT_EMAIL */]: 'The email corresponding to this action failed to send as the provided ' +
+            'recipient email address is invalid.',
+        ["invalid-sender" /* AuthErrorCode.INVALID_SENDER */]: 'The email template corresponding to this action contains an invalid sender email or name. ' +
+            'Please fix by going to the Auth email templates section in the Firebase Console.',
+        ["invalid-verification-id" /* AuthErrorCode.INVALID_SESSION_INFO */]: 'The verification ID used to create the phone auth credential is invalid.',
+        ["invalid-tenant-id" /* AuthErrorCode.INVALID_TENANT_ID */]: "The Auth instance's tenant ID is invalid.",
+        ["login-blocked" /* AuthErrorCode.LOGIN_BLOCKED */]: 'Login blocked by user-provided method: {$originalMessage}',
+        ["missing-android-pkg-name" /* AuthErrorCode.MISSING_ANDROID_PACKAGE_NAME */]: 'An Android Package Name must be provided if the Android App is required to be installed.',
+        ["auth-domain-config-required" /* AuthErrorCode.MISSING_AUTH_DOMAIN */]: 'Be sure to include authDomain when calling firebase.initializeApp(), ' +
+            'by following the instructions in the Firebase console.',
+        ["missing-app-credential" /* AuthErrorCode.MISSING_APP_CREDENTIAL */]: 'The phone verification request is missing an application verifier ' +
+            'assertion. A reCAPTCHA response token needs to be provided.',
+        ["missing-verification-code" /* AuthErrorCode.MISSING_CODE */]: 'The phone auth credential was created with an empty SMS verification code.',
+        ["missing-continue-uri" /* AuthErrorCode.MISSING_CONTINUE_URI */]: 'A continue URL must be provided in the request.',
+        ["missing-iframe-start" /* AuthErrorCode.MISSING_IFRAME_START */]: 'An internal AuthError has occurred.',
+        ["missing-ios-bundle-id" /* AuthErrorCode.MISSING_IOS_BUNDLE_ID */]: 'An iOS Bundle ID must be provided if an App Store ID is provided.',
+        ["missing-or-invalid-nonce" /* AuthErrorCode.MISSING_OR_INVALID_NONCE */]: 'The request does not contain a valid nonce. This can occur if the ' +
+            'SHA-256 hash of the provided raw nonce does not match the hashed nonce ' +
+            'in the ID token payload.',
+        ["missing-multi-factor-info" /* AuthErrorCode.MISSING_MFA_INFO */]: 'No second factor identifier is provided.',
+        ["missing-multi-factor-session" /* AuthErrorCode.MISSING_MFA_SESSION */]: 'The request is missing proof of first factor successful sign-in.',
+        ["missing-phone-number" /* AuthErrorCode.MISSING_PHONE_NUMBER */]: 'To send verification codes, provide a phone number for the recipient.',
+        ["missing-verification-id" /* AuthErrorCode.MISSING_SESSION_INFO */]: 'The phone auth credential was created with an empty verification ID.',
+        ["app-deleted" /* AuthErrorCode.MODULE_DESTROYED */]: 'This instance of FirebaseApp has been deleted.',
+        ["multi-factor-info-not-found" /* AuthErrorCode.MFA_INFO_NOT_FOUND */]: 'The user does not have a second factor matching the identifier provided.',
+        ["multi-factor-auth-required" /* AuthErrorCode.MFA_REQUIRED */]: 'Proof of ownership of a second factor is required to complete sign-in.',
+        ["account-exists-with-different-credential" /* AuthErrorCode.NEED_CONFIRMATION */]: 'An account already exists with the same email address but different ' +
+            'sign-in credentials. Sign in using a provider associated with this ' +
+            'email address.',
+        ["network-request-failed" /* AuthErrorCode.NETWORK_REQUEST_FAILED */]: 'A network AuthError (such as timeout, interrupted connection or unreachable host) has occurred.',
+        ["no-auth-event" /* AuthErrorCode.NO_AUTH_EVENT */]: 'An internal AuthError has occurred.',
+        ["no-such-provider" /* AuthErrorCode.NO_SUCH_PROVIDER */]: 'User was not linked to an account with the given provider.',
+        ["null-user" /* AuthErrorCode.NULL_USER */]: 'A null user object was provided as the argument for an operation which ' +
+            'requires a non-null user object.',
+        ["operation-not-allowed" /* AuthErrorCode.OPERATION_NOT_ALLOWED */]: 'The given sign-in provider is disabled for this Firebase project. ' +
+            'Enable it in the Firebase console, under the sign-in method tab of the ' +
+            'Auth section.',
+        ["operation-not-supported-in-this-environment" /* AuthErrorCode.OPERATION_NOT_SUPPORTED */]: 'This operation is not supported in the environment this application is ' +
+            'running on. "location.protocol" must be http, https or chrome-extension' +
+            ' and web storage must be enabled.',
+        ["popup-blocked" /* AuthErrorCode.POPUP_BLOCKED */]: 'Unable to establish a connection with the popup. It may have been blocked by the browser.',
+        ["popup-closed-by-user" /* AuthErrorCode.POPUP_CLOSED_BY_USER */]: 'The popup has been closed by the user before finalizing the operation.',
+        ["provider-already-linked" /* AuthErrorCode.PROVIDER_ALREADY_LINKED */]: 'User can only be linked to one identity for the given provider.',
+        ["quota-exceeded" /* AuthErrorCode.QUOTA_EXCEEDED */]: "The project's quota for this operation has been exceeded.",
+        ["redirect-cancelled-by-user" /* AuthErrorCode.REDIRECT_CANCELLED_BY_USER */]: 'The redirect operation has been cancelled by the user before finalizing.',
+        ["redirect-operation-pending" /* AuthErrorCode.REDIRECT_OPERATION_PENDING */]: 'A redirect sign-in operation is already pending.',
+        ["rejected-credential" /* AuthErrorCode.REJECTED_CREDENTIAL */]: 'The request contains malformed or mismatching credentials.',
+        ["second-factor-already-in-use" /* AuthErrorCode.SECOND_FACTOR_ALREADY_ENROLLED */]: 'The second factor is already enrolled on this account.',
+        ["maximum-second-factor-count-exceeded" /* AuthErrorCode.SECOND_FACTOR_LIMIT_EXCEEDED */]: 'The maximum allowed number of second factors on a user has been exceeded.',
+        ["tenant-id-mismatch" /* AuthErrorCode.TENANT_ID_MISMATCH */]: "The provided tenant ID does not match the Auth instance's tenant ID",
+        ["timeout" /* AuthErrorCode.TIMEOUT */]: 'The operation has timed out.',
+        ["user-token-expired" /* AuthErrorCode.TOKEN_EXPIRED */]: "The user's credential is no longer valid. The user must sign in again.",
+        ["too-many-requests" /* AuthErrorCode.TOO_MANY_ATTEMPTS_TRY_LATER */]: 'We have blocked all requests from this device due to unusual activity. ' +
+            'Try again later.',
+        ["unauthorized-continue-uri" /* AuthErrorCode.UNAUTHORIZED_DOMAIN */]: 'The domain of the continue URL is not whitelisted.  Please whitelist ' +
+            'the domain in the Firebase console.',
+        ["unsupported-first-factor" /* AuthErrorCode.UNSUPPORTED_FIRST_FACTOR */]: 'Enrolling a second factor or signing in with a multi-factor account requires sign-in with a supported first factor.',
+        ["unsupported-persistence-type" /* AuthErrorCode.UNSUPPORTED_PERSISTENCE */]: 'The current environment does not support the specified persistence type.',
+        ["unsupported-tenant-operation" /* AuthErrorCode.UNSUPPORTED_TENANT_OPERATION */]: 'This operation is not supported in a multi-tenant context.',
+        ["unverified-email" /* AuthErrorCode.UNVERIFIED_EMAIL */]: 'The operation requires a verified email.',
+        ["user-cancelled" /* AuthErrorCode.USER_CANCELLED */]: 'The user did not grant your application the permissions it requested.',
+        ["user-not-found" /* AuthErrorCode.USER_DELETED */]: 'There is no user record corresponding to this identifier. The user may ' +
+            'have been deleted.',
+        ["user-disabled" /* AuthErrorCode.USER_DISABLED */]: 'The user account has been disabled by an administrator.',
+        ["user-mismatch" /* AuthErrorCode.USER_MISMATCH */]: 'The supplied credentials do not correspond to the previously signed in user.',
+        ["user-signed-out" /* AuthErrorCode.USER_SIGNED_OUT */]: '',
+        ["weak-password" /* AuthErrorCode.WEAK_PASSWORD */]: 'The password must be 6 characters long or more.',
+        ["web-storage-unsupported" /* AuthErrorCode.WEB_STORAGE_UNSUPPORTED */]: 'This browser is not supported or 3rd party cookies and data may be disabled.',
+        ["already-initialized" /* AuthErrorCode.ALREADY_INITIALIZED */]: 'initializeAuth() has already been called with ' +
+            'different options. To avoid this error, call initializeAuth() with the ' +
+            'same options as when it was originally called, or call getAuth() to return the' +
+            ' already initialized instance.'
+    };
+}
 function _prodErrorMap() {
     // We will include this one message in the prod error map since by the very
     // nature of this error, developers will never be able to see the message
@@ -2820,6 +4511,14 @@ function _prodErrorMap() {
     };
 }
 /**
+ * A verbose error map with detailed descriptions for most error codes.
+ *
+ * See discussion at {@link AuthErrorMap}
+ *
+ * @public
+ */
+const debugErrorMap = _debugErrorMap;
+/**
  * A minimal error map with all verbose error messages stripped.
  *
  * See discussion at {@link AuthErrorMap}
@@ -2828,6 +4527,114 @@ function _prodErrorMap() {
  */
 const prodErrorMap = _prodErrorMap;
 const _DEFAULT_AUTH_ERROR_FACTORY = new ErrorFactory('auth', 'Firebase', _prodErrorMap());
+/**
+ * A map of potential `Auth` error codes, for easier comparison with errors
+ * thrown by the SDK.
+ *
+ * @remarks
+ * Note that you can't tree-shake individual keys
+ * in the map, so by using the map you might substantially increase your
+ * bundle size.
+ *
+ * @public
+ */
+const AUTH_ERROR_CODES_MAP_DO_NOT_USE_INTERNALLY = {
+    ADMIN_ONLY_OPERATION: 'auth/admin-restricted-operation',
+    ARGUMENT_ERROR: 'auth/argument-error',
+    APP_NOT_AUTHORIZED: 'auth/app-not-authorized',
+    APP_NOT_INSTALLED: 'auth/app-not-installed',
+    CAPTCHA_CHECK_FAILED: 'auth/captcha-check-failed',
+    CODE_EXPIRED: 'auth/code-expired',
+    CORDOVA_NOT_READY: 'auth/cordova-not-ready',
+    CORS_UNSUPPORTED: 'auth/cors-unsupported',
+    CREDENTIAL_ALREADY_IN_USE: 'auth/credential-already-in-use',
+    CREDENTIAL_MISMATCH: 'auth/custom-token-mismatch',
+    CREDENTIAL_TOO_OLD_LOGIN_AGAIN: 'auth/requires-recent-login',
+    DEPENDENT_SDK_INIT_BEFORE_AUTH: 'auth/dependent-sdk-initialized-before-auth',
+    DYNAMIC_LINK_NOT_ACTIVATED: 'auth/dynamic-link-not-activated',
+    EMAIL_CHANGE_NEEDS_VERIFICATION: 'auth/email-change-needs-verification',
+    EMAIL_EXISTS: 'auth/email-already-in-use',
+    EMULATOR_CONFIG_FAILED: 'auth/emulator-config-failed',
+    EXPIRED_OOB_CODE: 'auth/expired-action-code',
+    EXPIRED_POPUP_REQUEST: 'auth/cancelled-popup-request',
+    INTERNAL_ERROR: 'auth/internal-error',
+    INVALID_API_KEY: 'auth/invalid-api-key',
+    INVALID_APP_CREDENTIAL: 'auth/invalid-app-credential',
+    INVALID_APP_ID: 'auth/invalid-app-id',
+    INVALID_AUTH: 'auth/invalid-user-token',
+    INVALID_AUTH_EVENT: 'auth/invalid-auth-event',
+    INVALID_CERT_HASH: 'auth/invalid-cert-hash',
+    INVALID_CODE: 'auth/invalid-verification-code',
+    INVALID_CONTINUE_URI: 'auth/invalid-continue-uri',
+    INVALID_CORDOVA_CONFIGURATION: 'auth/invalid-cordova-configuration',
+    INVALID_CUSTOM_TOKEN: 'auth/invalid-custom-token',
+    INVALID_DYNAMIC_LINK_DOMAIN: 'auth/invalid-dynamic-link-domain',
+    INVALID_EMAIL: 'auth/invalid-email',
+    INVALID_EMULATOR_SCHEME: 'auth/invalid-emulator-scheme',
+    INVALID_IDP_RESPONSE: 'auth/invalid-credential',
+    INVALID_MESSAGE_PAYLOAD: 'auth/invalid-message-payload',
+    INVALID_MFA_SESSION: 'auth/invalid-multi-factor-session',
+    INVALID_OAUTH_CLIENT_ID: 'auth/invalid-oauth-client-id',
+    INVALID_OAUTH_PROVIDER: 'auth/invalid-oauth-provider',
+    INVALID_OOB_CODE: 'auth/invalid-action-code',
+    INVALID_ORIGIN: 'auth/unauthorized-domain',
+    INVALID_PASSWORD: 'auth/wrong-password',
+    INVALID_PERSISTENCE: 'auth/invalid-persistence-type',
+    INVALID_PHONE_NUMBER: 'auth/invalid-phone-number',
+    INVALID_PROVIDER_ID: 'auth/invalid-provider-id',
+    INVALID_RECIPIENT_EMAIL: 'auth/invalid-recipient-email',
+    INVALID_SENDER: 'auth/invalid-sender',
+    INVALID_SESSION_INFO: 'auth/invalid-verification-id',
+    INVALID_TENANT_ID: 'auth/invalid-tenant-id',
+    MFA_INFO_NOT_FOUND: 'auth/multi-factor-info-not-found',
+    MFA_REQUIRED: 'auth/multi-factor-auth-required',
+    MISSING_ANDROID_PACKAGE_NAME: 'auth/missing-android-pkg-name',
+    MISSING_APP_CREDENTIAL: 'auth/missing-app-credential',
+    MISSING_AUTH_DOMAIN: 'auth/auth-domain-config-required',
+    MISSING_CODE: 'auth/missing-verification-code',
+    MISSING_CONTINUE_URI: 'auth/missing-continue-uri',
+    MISSING_IFRAME_START: 'auth/missing-iframe-start',
+    MISSING_IOS_BUNDLE_ID: 'auth/missing-ios-bundle-id',
+    MISSING_OR_INVALID_NONCE: 'auth/missing-or-invalid-nonce',
+    MISSING_MFA_INFO: 'auth/missing-multi-factor-info',
+    MISSING_MFA_SESSION: 'auth/missing-multi-factor-session',
+    MISSING_PHONE_NUMBER: 'auth/missing-phone-number',
+    MISSING_SESSION_INFO: 'auth/missing-verification-id',
+    MODULE_DESTROYED: 'auth/app-deleted',
+    NEED_CONFIRMATION: 'auth/account-exists-with-different-credential',
+    NETWORK_REQUEST_FAILED: 'auth/network-request-failed',
+    NULL_USER: 'auth/null-user',
+    NO_AUTH_EVENT: 'auth/no-auth-event',
+    NO_SUCH_PROVIDER: 'auth/no-such-provider',
+    OPERATION_NOT_ALLOWED: 'auth/operation-not-allowed',
+    OPERATION_NOT_SUPPORTED: 'auth/operation-not-supported-in-this-environment',
+    POPUP_BLOCKED: 'auth/popup-blocked',
+    POPUP_CLOSED_BY_USER: 'auth/popup-closed-by-user',
+    PROVIDER_ALREADY_LINKED: 'auth/provider-already-linked',
+    QUOTA_EXCEEDED: 'auth/quota-exceeded',
+    REDIRECT_CANCELLED_BY_USER: 'auth/redirect-cancelled-by-user',
+    REDIRECT_OPERATION_PENDING: 'auth/redirect-operation-pending',
+    REJECTED_CREDENTIAL: 'auth/rejected-credential',
+    SECOND_FACTOR_ALREADY_ENROLLED: 'auth/second-factor-already-in-use',
+    SECOND_FACTOR_LIMIT_EXCEEDED: 'auth/maximum-second-factor-count-exceeded',
+    TENANT_ID_MISMATCH: 'auth/tenant-id-mismatch',
+    TIMEOUT: 'auth/timeout',
+    TOKEN_EXPIRED: 'auth/user-token-expired',
+    TOO_MANY_ATTEMPTS_TRY_LATER: 'auth/too-many-requests',
+    UNAUTHORIZED_DOMAIN: 'auth/unauthorized-continue-uri',
+    UNSUPPORTED_FIRST_FACTOR: 'auth/unsupported-first-factor',
+    UNSUPPORTED_PERSISTENCE: 'auth/unsupported-persistence-type',
+    UNSUPPORTED_TENANT_OPERATION: 'auth/unsupported-tenant-operation',
+    UNVERIFIED_EMAIL: 'auth/unverified-email',
+    USER_CANCELLED: 'auth/user-cancelled',
+    USER_DELETED: 'auth/user-not-found',
+    USER_DISABLED: 'auth/user-disabled',
+    USER_MISMATCH: 'auth/user-mismatch',
+    USER_SIGNED_OUT: 'auth/user-signed-out',
+    WEAK_PASSWORD: 'auth/weak-password',
+    WEB_STORAGE_UNSUPPORTED: 'auth/web-storage-unsupported',
+    ALREADY_INITIALIZED: 'auth/already-initialized'
+};
 
 /**
  * @license
@@ -2880,6 +4687,16 @@ function _errorWithCustomMessage(auth, code, message) {
     return factory.create(code, {
         appName: auth.name
     });
+}
+function _assertInstanceOf(auth, object, instance) {
+    const constructorInstance = instance;
+    if (!(object instanceof constructorInstance)) {
+        if (constructorInstance.name !== object.constructor.name) {
+            _fail(auth, "argument-error" /* AuthErrorCode.ARGUMENT_ERROR */);
+        }
+        throw _errorWithCustomMessage(auth, "argument-error" /* AuthErrorCode.ARGUMENT_ERROR */, `Type of ${object.constructor.name} does not match expected instance.` +
+            `Did you pass a reference from a different Auth SDK?`);
+    }
 }
 function createErrorInternal(authOrCode, ...rest) {
     if (typeof authOrCode !== 'string') {
@@ -3469,6 +5286,9 @@ function _makeTaggedError(auth, code, response) {
 async function deleteAccount(auth, request) {
     return _performApiRequest(auth, "POST" /* HttpMethod.POST */, "/v1/accounts:delete" /* Endpoint.DELETE_ACCOUNT */, request);
 }
+async function deleteLinkedAccounts(auth, request) {
+    return _performApiRequest(auth, "POST" /* HttpMethod.POST */, "/v1/accounts:update" /* Endpoint.SET_ACCOUNT_INFO */, request);
+}
 async function getAccountInfo(auth, request) {
     return _performApiRequest(auth, "POST" /* HttpMethod.POST */, "/v1/accounts:lookup" /* Endpoint.GET_ACCOUNT_INFO */, request);
 }
@@ -3506,6 +5326,38 @@ function utcTimestampToDateString(utcTimestamp) {
         // Do nothing. undefined will be returned.
     }
     return undefined;
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Returns a JSON Web Token (JWT) used to identify the user to a Firebase service.
+ *
+ * @remarks
+ * Returns the current token if it has not expired or if it will not expire in the next five
+ * minutes. Otherwise, this will refresh the token and return a new one.
+ *
+ * @param user - The user.
+ * @param forceRefresh - Force refresh regardless of token expiration.
+ *
+ * @public
+ */
+function getIdToken(user, forceRefresh = false) {
+    return getModularInstance(user).getIdToken(forceRefresh);
 }
 /**
  * Returns a deserialized JSON Web Token (JWT) used to identitfy the user to a Firebase service.
@@ -4432,6 +6284,10 @@ function _isIOS(ua = getUA()) {
     return (/iphone|ipad|ipod/i.test(ua) ||
         (/macintosh/i.test(ua) && /mobile/i.test(ua)));
 }
+function _isIOS7Or8(ua = getUA()) {
+    return (/(iPad|iPhone|iPod).*OS 7_\d/i.test(ua) ||
+        /(iPad|iPhone|iPod).*OS 8_\d/i.test(ua));
+}
 function _isIOSStandalone(ua = getUA()) {
     var _a;
     return _isIOS(ua) && !!((_a = window.navigator) === null || _a === void 0 ? void 0 : _a.standalone);
@@ -5233,6 +7089,211 @@ class AuthCredential {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+async function resetPassword(auth, request) {
+    return _performApiRequest(auth, "POST" /* HttpMethod.POST */, "/v1/accounts:resetPassword" /* Endpoint.RESET_PASSWORD */, _addTidIfNecessary(auth, request));
+}
+async function updateEmailPassword(auth, request) {
+    return _performApiRequest(auth, "POST" /* HttpMethod.POST */, "/v1/accounts:update" /* Endpoint.SET_ACCOUNT_INFO */, request);
+}
+async function applyActionCode$1(auth, request) {
+    return _performApiRequest(auth, "POST" /* HttpMethod.POST */, "/v1/accounts:update" /* Endpoint.SET_ACCOUNT_INFO */, _addTidIfNecessary(auth, request));
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+async function signInWithPassword(auth, request) {
+    return _performSignInRequest(auth, "POST" /* HttpMethod.POST */, "/v1/accounts:signInWithPassword" /* Endpoint.SIGN_IN_WITH_PASSWORD */, _addTidIfNecessary(auth, request));
+}
+async function sendOobCode(auth, request) {
+    return _performApiRequest(auth, "POST" /* HttpMethod.POST */, "/v1/accounts:sendOobCode" /* Endpoint.SEND_OOB_CODE */, _addTidIfNecessary(auth, request));
+}
+async function sendEmailVerification$1(auth, request) {
+    return sendOobCode(auth, request);
+}
+async function sendPasswordResetEmail$1(auth, request) {
+    return sendOobCode(auth, request);
+}
+async function sendSignInLinkToEmail$1(auth, request) {
+    return sendOobCode(auth, request);
+}
+async function verifyAndChangeEmail(auth, request) {
+    return sendOobCode(auth, request);
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+async function signInWithEmailLink$1(auth, request) {
+    return _performSignInRequest(auth, "POST" /* HttpMethod.POST */, "/v1/accounts:signInWithEmailLink" /* Endpoint.SIGN_IN_WITH_EMAIL_LINK */, _addTidIfNecessary(auth, request));
+}
+async function signInWithEmailLinkForLinking(auth, request) {
+    return _performSignInRequest(auth, "POST" /* HttpMethod.POST */, "/v1/accounts:signInWithEmailLink" /* Endpoint.SIGN_IN_WITH_EMAIL_LINK */, _addTidIfNecessary(auth, request));
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Interface that represents the credentials returned by {@link EmailAuthProvider} for
+ * {@link ProviderId}.PASSWORD
+ *
+ * @remarks
+ * Covers both {@link SignInMethod}.EMAIL_PASSWORD and
+ * {@link SignInMethod}.EMAIL_LINK.
+ *
+ * @public
+ */
+class EmailAuthCredential extends AuthCredential {
+    /** @internal */
+    constructor(
+    /** @internal */
+    _email, 
+    /** @internal */
+    _password, signInMethod, 
+    /** @internal */
+    _tenantId = null) {
+        super("password" /* ProviderId.PASSWORD */, signInMethod);
+        this._email = _email;
+        this._password = _password;
+        this._tenantId = _tenantId;
+    }
+    /** @internal */
+    static _fromEmailAndPassword(email, password) {
+        return new EmailAuthCredential(email, password, "password" /* SignInMethod.EMAIL_PASSWORD */);
+    }
+    /** @internal */
+    static _fromEmailAndCode(email, oobCode, tenantId = null) {
+        return new EmailAuthCredential(email, oobCode, "emailLink" /* SignInMethod.EMAIL_LINK */, tenantId);
+    }
+    /** {@inheritdoc AuthCredential.toJSON} */
+    toJSON() {
+        return {
+            email: this._email,
+            password: this._password,
+            signInMethod: this.signInMethod,
+            tenantId: this._tenantId
+        };
+    }
+    /**
+     * Static method to deserialize a JSON representation of an object into an {@link  AuthCredential}.
+     *
+     * @param json - Either `object` or the stringified representation of the object. When string is
+     * provided, `JSON.parse` would be called first.
+     *
+     * @returns If the JSON input does not represent an {@link AuthCredential}, null is returned.
+     */
+    static fromJSON(json) {
+        const obj = typeof json === 'string' ? JSON.parse(json) : json;
+        if ((obj === null || obj === void 0 ? void 0 : obj.email) && (obj === null || obj === void 0 ? void 0 : obj.password)) {
+            if (obj.signInMethod === "password" /* SignInMethod.EMAIL_PASSWORD */) {
+                return this._fromEmailAndPassword(obj.email, obj.password);
+            }
+            else if (obj.signInMethod === "emailLink" /* SignInMethod.EMAIL_LINK */) {
+                return this._fromEmailAndCode(obj.email, obj.password, obj.tenantId);
+            }
+        }
+        return null;
+    }
+    /** @internal */
+    async _getIdTokenResponse(auth) {
+        switch (this.signInMethod) {
+            case "password" /* SignInMethod.EMAIL_PASSWORD */:
+                return signInWithPassword(auth, {
+                    returnSecureToken: true,
+                    email: this._email,
+                    password: this._password
+                });
+            case "emailLink" /* SignInMethod.EMAIL_LINK */:
+                return signInWithEmailLink$1(auth, {
+                    email: this._email,
+                    oobCode: this._password
+                });
+            default:
+                _fail(auth, "internal-error" /* AuthErrorCode.INTERNAL_ERROR */);
+        }
+    }
+    /** @internal */
+    async _linkToIdToken(auth, idToken) {
+        switch (this.signInMethod) {
+            case "password" /* SignInMethod.EMAIL_PASSWORD */:
+                return updateEmailPassword(auth, {
+                    idToken,
+                    returnSecureToken: true,
+                    email: this._email,
+                    password: this._password
+                });
+            case "emailLink" /* SignInMethod.EMAIL_LINK */:
+                return signInWithEmailLinkForLinking(auth, {
+                    idToken,
+                    email: this._email,
+                    oobCode: this._password
+                });
+            default:
+                _fail(auth, "internal-error" /* AuthErrorCode.INTERNAL_ERROR */);
+        }
+    }
+    /** @internal */
+    _getReauthenticationResolver(auth) {
+        return this._getIdTokenResponse(auth);
+    }
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 async function signInWithIdp(auth, request) {
     return _performSignInRequest(auth, "POST" /* HttpMethod.POST */, "/v1/accounts:signInWithIdp" /* Endpoint.SIGN_IN_WITH_IDP */, _addTidIfNecessary(auth, request));
 }
@@ -5393,6 +7454,344 @@ class OAuthCredential extends AuthCredential {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+async function sendPhoneVerificationCode(auth, request) {
+    return _performApiRequest(auth, "POST" /* HttpMethod.POST */, "/v1/accounts:sendVerificationCode" /* Endpoint.SEND_VERIFICATION_CODE */, _addTidIfNecessary(auth, request));
+}
+async function signInWithPhoneNumber$1(auth, request) {
+    return _performSignInRequest(auth, "POST" /* HttpMethod.POST */, "/v1/accounts:signInWithPhoneNumber" /* Endpoint.SIGN_IN_WITH_PHONE_NUMBER */, _addTidIfNecessary(auth, request));
+}
+async function linkWithPhoneNumber$1(auth, request) {
+    const response = await _performSignInRequest(auth, "POST" /* HttpMethod.POST */, "/v1/accounts:signInWithPhoneNumber" /* Endpoint.SIGN_IN_WITH_PHONE_NUMBER */, _addTidIfNecessary(auth, request));
+    if (response.temporaryProof) {
+        throw _makeTaggedError(auth, "account-exists-with-different-credential" /* AuthErrorCode.NEED_CONFIRMATION */, response);
+    }
+    return response;
+}
+const VERIFY_PHONE_NUMBER_FOR_EXISTING_ERROR_MAP_ = {
+    ["USER_NOT_FOUND" /* ServerError.USER_NOT_FOUND */]: "user-not-found" /* AuthErrorCode.USER_DELETED */
+};
+async function verifyPhoneNumberForExisting(auth, request) {
+    const apiRequest = Object.assign(Object.assign({}, request), { operation: 'REAUTH' });
+    return _performSignInRequest(auth, "POST" /* HttpMethod.POST */, "/v1/accounts:signInWithPhoneNumber" /* Endpoint.SIGN_IN_WITH_PHONE_NUMBER */, _addTidIfNecessary(auth, apiRequest), VERIFY_PHONE_NUMBER_FOR_EXISTING_ERROR_MAP_);
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Represents the credentials returned by {@link PhoneAuthProvider}.
+ *
+ * @public
+ */
+class PhoneAuthCredential extends AuthCredential {
+    constructor(params) {
+        super("phone" /* ProviderId.PHONE */, "phone" /* SignInMethod.PHONE */);
+        this.params = params;
+    }
+    /** @internal */
+    static _fromVerification(verificationId, verificationCode) {
+        return new PhoneAuthCredential({ verificationId, verificationCode });
+    }
+    /** @internal */
+    static _fromTokenResponse(phoneNumber, temporaryProof) {
+        return new PhoneAuthCredential({ phoneNumber, temporaryProof });
+    }
+    /** @internal */
+    _getIdTokenResponse(auth) {
+        return signInWithPhoneNumber$1(auth, this._makeVerificationRequest());
+    }
+    /** @internal */
+    _linkToIdToken(auth, idToken) {
+        return linkWithPhoneNumber$1(auth, Object.assign({ idToken }, this._makeVerificationRequest()));
+    }
+    /** @internal */
+    _getReauthenticationResolver(auth) {
+        return verifyPhoneNumberForExisting(auth, this._makeVerificationRequest());
+    }
+    /** @internal */
+    _makeVerificationRequest() {
+        const { temporaryProof, phoneNumber, verificationId, verificationCode } = this.params;
+        if (temporaryProof && phoneNumber) {
+            return { temporaryProof, phoneNumber };
+        }
+        return {
+            sessionInfo: verificationId,
+            code: verificationCode
+        };
+    }
+    /** {@inheritdoc AuthCredential.toJSON} */
+    toJSON() {
+        const obj = {
+            providerId: this.providerId
+        };
+        if (this.params.phoneNumber) {
+            obj.phoneNumber = this.params.phoneNumber;
+        }
+        if (this.params.temporaryProof) {
+            obj.temporaryProof = this.params.temporaryProof;
+        }
+        if (this.params.verificationCode) {
+            obj.verificationCode = this.params.verificationCode;
+        }
+        if (this.params.verificationId) {
+            obj.verificationId = this.params.verificationId;
+        }
+        return obj;
+    }
+    /** Generates a phone credential based on a plain object or a JSON string. */
+    static fromJSON(json) {
+        if (typeof json === 'string') {
+            json = JSON.parse(json);
+        }
+        const { verificationId, verificationCode, phoneNumber, temporaryProof } = json;
+        if (!verificationCode &&
+            !verificationId &&
+            !phoneNumber &&
+            !temporaryProof) {
+            return null;
+        }
+        return new PhoneAuthCredential({
+            verificationId,
+            verificationCode,
+            phoneNumber,
+            temporaryProof
+        });
+    }
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Maps the mode string in action code URL to Action Code Info operation.
+ *
+ * @param mode
+ */
+function parseMode(mode) {
+    switch (mode) {
+        case 'recoverEmail':
+            return "RECOVER_EMAIL" /* ActionCodeOperation.RECOVER_EMAIL */;
+        case 'resetPassword':
+            return "PASSWORD_RESET" /* ActionCodeOperation.PASSWORD_RESET */;
+        case 'signIn':
+            return "EMAIL_SIGNIN" /* ActionCodeOperation.EMAIL_SIGNIN */;
+        case 'verifyEmail':
+            return "VERIFY_EMAIL" /* ActionCodeOperation.VERIFY_EMAIL */;
+        case 'verifyAndChangeEmail':
+            return "VERIFY_AND_CHANGE_EMAIL" /* ActionCodeOperation.VERIFY_AND_CHANGE_EMAIL */;
+        case 'revertSecondFactorAddition':
+            return "REVERT_SECOND_FACTOR_ADDITION" /* ActionCodeOperation.REVERT_SECOND_FACTOR_ADDITION */;
+        default:
+            return null;
+    }
+}
+/**
+ * Helper to parse FDL links
+ *
+ * @param url
+ */
+function parseDeepLink(url) {
+    const link = querystringDecode(extractQuerystring(url))['link'];
+    // Double link case (automatic redirect).
+    const doubleDeepLink = link
+        ? querystringDecode(extractQuerystring(link))['deep_link_id']
+        : null;
+    // iOS custom scheme links.
+    const iOSDeepLink = querystringDecode(extractQuerystring(url))['deep_link_id'];
+    const iOSDoubleDeepLink = iOSDeepLink
+        ? querystringDecode(extractQuerystring(iOSDeepLink))['link']
+        : null;
+    return iOSDoubleDeepLink || iOSDeepLink || doubleDeepLink || link || url;
+}
+/**
+ * A utility class to parse email action URLs such as password reset, email verification,
+ * email link sign in, etc.
+ *
+ * @public
+ */
+class ActionCodeURL {
+    /**
+     * @param actionLink - The link from which to extract the URL.
+     * @returns The {@link ActionCodeURL} object, or null if the link is invalid.
+     *
+     * @internal
+     */
+    constructor(actionLink) {
+        var _a, _b, _c, _d, _e, _f;
+        const searchParams = querystringDecode(extractQuerystring(actionLink));
+        const apiKey = (_a = searchParams["apiKey" /* QueryField.API_KEY */]) !== null && _a !== void 0 ? _a : null;
+        const code = (_b = searchParams["oobCode" /* QueryField.CODE */]) !== null && _b !== void 0 ? _b : null;
+        const operation = parseMode((_c = searchParams["mode" /* QueryField.MODE */]) !== null && _c !== void 0 ? _c : null);
+        // Validate API key, code and mode.
+        _assert(apiKey && code && operation, "argument-error" /* AuthErrorCode.ARGUMENT_ERROR */);
+        this.apiKey = apiKey;
+        this.operation = operation;
+        this.code = code;
+        this.continueUrl = (_d = searchParams["continueUrl" /* QueryField.CONTINUE_URL */]) !== null && _d !== void 0 ? _d : null;
+        this.languageCode = (_e = searchParams["languageCode" /* QueryField.LANGUAGE_CODE */]) !== null && _e !== void 0 ? _e : null;
+        this.tenantId = (_f = searchParams["tenantId" /* QueryField.TENANT_ID */]) !== null && _f !== void 0 ? _f : null;
+    }
+    /**
+     * Parses the email action link string and returns an {@link ActionCodeURL} if the link is valid,
+     * otherwise returns null.
+     *
+     * @param link  - The email action link string.
+     * @returns The {@link ActionCodeURL} object, or null if the link is invalid.
+     *
+     * @public
+     */
+    static parseLink(link) {
+        const actionLink = parseDeepLink(link);
+        try {
+            return new ActionCodeURL(actionLink);
+        }
+        catch (_a) {
+            return null;
+        }
+    }
+}
+/**
+ * Parses the email action link string and returns an {@link ActionCodeURL} if
+ * the link is valid, otherwise returns null.
+ *
+ * @public
+ */
+function parseActionCodeURL(link) {
+    return ActionCodeURL.parseLink(link);
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Provider for generating {@link EmailAuthCredential}.
+ *
+ * @public
+ */
+class EmailAuthProvider {
+    constructor() {
+        /**
+         * Always set to {@link ProviderId}.PASSWORD, even for email link.
+         */
+        this.providerId = EmailAuthProvider.PROVIDER_ID;
+    }
+    /**
+     * Initialize an {@link AuthCredential} using an email and password.
+     *
+     * @example
+     * ```javascript
+     * const authCredential = EmailAuthProvider.credential(email, password);
+     * const userCredential = await signInWithCredential(auth, authCredential);
+     * ```
+     *
+     * @example
+     * ```javascript
+     * const userCredential = await signInWithEmailAndPassword(auth, email, password);
+     * ```
+     *
+     * @param email - Email address.
+     * @param password - User account password.
+     * @returns The auth provider credential.
+     */
+    static credential(email, password) {
+        return EmailAuthCredential._fromEmailAndPassword(email, password);
+    }
+    /**
+     * Initialize an {@link AuthCredential} using an email and an email link after a sign in with
+     * email link operation.
+     *
+     * @example
+     * ```javascript
+     * const authCredential = EmailAuthProvider.credentialWithLink(auth, email, emailLink);
+     * const userCredential = await signInWithCredential(auth, authCredential);
+     * ```
+     *
+     * @example
+     * ```javascript
+     * await sendSignInLinkToEmail(auth, email);
+     * // Obtain emailLink from user.
+     * const userCredential = await signInWithEmailLink(auth, email, emailLink);
+     * ```
+     *
+     * @param auth - The {@link Auth} instance used to verify the link.
+     * @param email - Email address.
+     * @param emailLink - Sign-in email link.
+     * @returns - The auth provider credential.
+     */
+    static credentialWithLink(email, emailLink) {
+        const actionCodeUrl = ActionCodeURL.parseLink(emailLink);
+        _assert(actionCodeUrl, "argument-error" /* AuthErrorCode.ARGUMENT_ERROR */);
+        return EmailAuthCredential._fromEmailAndCode(email, actionCodeUrl.code, actionCodeUrl.tenantId);
+    }
+}
+/**
+ * Always set to {@link ProviderId}.PASSWORD, even for email link.
+ */
+EmailAuthProvider.PROVIDER_ID = "password" /* ProviderId.PASSWORD */;
+/**
+ * Always set to {@link SignInMethod}.EMAIL_PASSWORD.
+ */
+EmailAuthProvider.EMAIL_PASSWORD_SIGN_IN_METHOD = "password" /* SignInMethod.EMAIL_PASSWORD */;
+/**
+ * Always set to {@link SignInMethod}.EMAIL_LINK.
+ */
+EmailAuthProvider.EMAIL_LINK_SIGN_IN_METHOD = "emailLink" /* SignInMethod.EMAIL_LINK */;
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 /**
  * The base class for all Federated providers (OAuth (including OIDC), SAML).
  *
@@ -5488,6 +7887,130 @@ class BaseOAuthProvider extends FederatedAuthProvider {
      */
     getScopes() {
         return [...this.scopes];
+    }
+}
+/**
+ * Provider for generating generic {@link OAuthCredential}.
+ *
+ * @example
+ * ```javascript
+ * // Sign in using a redirect.
+ * const provider = new OAuthProvider('google.com');
+ * // Start a sign in process for an unauthenticated user.
+ * provider.addScope('profile');
+ * provider.addScope('email');
+ * await signInWithRedirect(auth, provider);
+ * // This will trigger a full page redirect away from your app
+ *
+ * // After returning from the redirect when your app initializes you can obtain the result
+ * const result = await getRedirectResult(auth);
+ * if (result) {
+ *   // This is the signed-in user
+ *   const user = result.user;
+ *   // This gives you a OAuth Access Token for the provider.
+ *   const credential = provider.credentialFromResult(auth, result);
+ *   const token = credential.accessToken;
+ * }
+ * ```
+ *
+ * @example
+ * ```javascript
+ * // Sign in using a popup.
+ * const provider = new OAuthProvider('google.com');
+ * provider.addScope('profile');
+ * provider.addScope('email');
+ * const result = await signInWithPopup(auth, provider);
+ *
+ * // The signed-in user info.
+ * const user = result.user;
+ * // This gives you a OAuth Access Token for the provider.
+ * const credential = provider.credentialFromResult(auth, result);
+ * const token = credential.accessToken;
+ * ```
+ * @public
+ */
+class OAuthProvider extends BaseOAuthProvider {
+    /**
+     * Creates an {@link OAuthCredential} from a JSON string or a plain object.
+     * @param json - A plain object or a JSON string
+     */
+    static credentialFromJSON(json) {
+        const obj = typeof json === 'string' ? JSON.parse(json) : json;
+        _assert('providerId' in obj && 'signInMethod' in obj, "argument-error" /* AuthErrorCode.ARGUMENT_ERROR */);
+        return OAuthCredential._fromParams(obj);
+    }
+    /**
+     * Creates a {@link OAuthCredential} from a generic OAuth provider's access token or ID token.
+     *
+     * @remarks
+     * The raw nonce is required when an ID token with a nonce field is provided. The SHA-256 hash of
+     * the raw nonce must match the nonce field in the ID token.
+     *
+     * @example
+     * ```javascript
+     * // `googleUser` from the onsuccess Google Sign In callback.
+     * // Initialize a generate OAuth provider with a `google.com` providerId.
+     * const provider = new OAuthProvider('google.com');
+     * const credential = provider.credential({
+     *   idToken: googleUser.getAuthResponse().id_token,
+     * });
+     * const result = await signInWithCredential(credential);
+     * ```
+     *
+     * @param params - Either the options object containing the ID token, access token and raw nonce
+     * or the ID token string.
+     */
+    credential(params) {
+        return this._credential(Object.assign(Object.assign({}, params), { nonce: params.rawNonce }));
+    }
+    /** An internal credential method that accepts more permissive options */
+    _credential(params) {
+        _assert(params.idToken || params.accessToken, "argument-error" /* AuthErrorCode.ARGUMENT_ERROR */);
+        // For OAuthCredential, sign in method is same as providerId.
+        return OAuthCredential._fromParams(Object.assign(Object.assign({}, params), { providerId: this.providerId, signInMethod: this.providerId }));
+    }
+    /**
+     * Used to extract the underlying {@link OAuthCredential} from a {@link UserCredential}.
+     *
+     * @param userCredential - The user credential.
+     */
+    static credentialFromResult(userCredential) {
+        return OAuthProvider.oauthCredentialFromTaggedObject(userCredential);
+    }
+    /**
+     * Used to extract the underlying {@link OAuthCredential} from a {@link AuthError} which was
+     * thrown during a sign-in, link, or reauthenticate operation.
+     *
+     * @param userCredential - The user credential.
+     */
+    static credentialFromError(error) {
+        return OAuthProvider.oauthCredentialFromTaggedObject((error.customData || {}));
+    }
+    static oauthCredentialFromTaggedObject({ _tokenResponse: tokenResponse }) {
+        if (!tokenResponse) {
+            return null;
+        }
+        const { oauthIdToken, oauthAccessToken, oauthTokenSecret, pendingToken, nonce, providerId } = tokenResponse;
+        if (!oauthAccessToken &&
+            !oauthTokenSecret &&
+            !oauthIdToken &&
+            !pendingToken) {
+            return null;
+        }
+        if (!providerId) {
+            return null;
+        }
+        try {
+            return new OAuthProvider(providerId)._credential({
+                idToken: oauthIdToken,
+                accessToken: oauthAccessToken,
+                nonce,
+                pendingToken
+            });
+        }
+        catch (e) {
+            return null;
+        }
     }
 }
 
@@ -5855,6 +8378,179 @@ GithubAuthProvider.PROVIDER_ID = "github.com" /* ProviderId.GITHUB */;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+const IDP_REQUEST_URI = 'http://localhost';
+/**
+ * @public
+ */
+class SAMLAuthCredential extends AuthCredential {
+    /** @internal */
+    constructor(providerId, pendingToken) {
+        super(providerId, providerId);
+        this.pendingToken = pendingToken;
+    }
+    /** @internal */
+    _getIdTokenResponse(auth) {
+        const request = this.buildRequest();
+        return signInWithIdp(auth, request);
+    }
+    /** @internal */
+    _linkToIdToken(auth, idToken) {
+        const request = this.buildRequest();
+        request.idToken = idToken;
+        return signInWithIdp(auth, request);
+    }
+    /** @internal */
+    _getReauthenticationResolver(auth) {
+        const request = this.buildRequest();
+        request.autoCreate = false;
+        return signInWithIdp(auth, request);
+    }
+    /** {@inheritdoc AuthCredential.toJSON}  */
+    toJSON() {
+        return {
+            signInMethod: this.signInMethod,
+            providerId: this.providerId,
+            pendingToken: this.pendingToken
+        };
+    }
+    /**
+     * Static method to deserialize a JSON representation of an object into an
+     * {@link  AuthCredential}.
+     *
+     * @param json - Input can be either Object or the stringified representation of the object.
+     * When string is provided, JSON.parse would be called first.
+     *
+     * @returns If the JSON input does not represent an {@link  AuthCredential}, null is returned.
+     */
+    static fromJSON(json) {
+        const obj = typeof json === 'string' ? JSON.parse(json) : json;
+        const { providerId, signInMethod, pendingToken } = obj;
+        if (!providerId ||
+            !signInMethod ||
+            !pendingToken ||
+            providerId !== signInMethod) {
+            return null;
+        }
+        return new SAMLAuthCredential(providerId, pendingToken);
+    }
+    /**
+     * Helper static method to avoid exposing the constructor to end users.
+     *
+     * @internal
+     */
+    static _create(providerId, pendingToken) {
+        return new SAMLAuthCredential(providerId, pendingToken);
+    }
+    buildRequest() {
+        return {
+            requestUri: IDP_REQUEST_URI,
+            returnSecureToken: true,
+            pendingToken: this.pendingToken
+        };
+    }
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+const SAML_PROVIDER_PREFIX = 'saml.';
+/**
+ * An {@link AuthProvider} for SAML.
+ *
+ * @public
+ */
+class SAMLAuthProvider extends FederatedAuthProvider {
+    /**
+     * Constructor. The providerId must start with "saml."
+     * @param providerId - SAML provider ID.
+     */
+    constructor(providerId) {
+        _assert(providerId.startsWith(SAML_PROVIDER_PREFIX), "argument-error" /* AuthErrorCode.ARGUMENT_ERROR */);
+        super(providerId);
+    }
+    /**
+     * Generates an {@link AuthCredential} from a {@link UserCredential} after a
+     * successful SAML flow completes.
+     *
+     * @remarks
+     *
+     * For example, to get an {@link AuthCredential}, you could write the
+     * following code:
+     *
+     * ```js
+     * const userCredential = await signInWithPopup(auth, samlProvider);
+     * const credential = SAMLAuthProvider.credentialFromResult(userCredential);
+     * ```
+     *
+     * @param userCredential - The user credential.
+     */
+    static credentialFromResult(userCredential) {
+        return SAMLAuthProvider.samlCredentialFromTaggedObject(userCredential);
+    }
+    /**
+     * Used to extract the underlying {@link OAuthCredential} from a {@link AuthError} which was
+     * thrown during a sign-in, link, or reauthenticate operation.
+     *
+     * @param userCredential - The user credential.
+     */
+    static credentialFromError(error) {
+        return SAMLAuthProvider.samlCredentialFromTaggedObject((error.customData || {}));
+    }
+    /**
+     * Creates an {@link AuthCredential} from a JSON string or a plain object.
+     * @param json - A plain object or a JSON string
+     */
+    static credentialFromJSON(json) {
+        const credential = SAMLAuthCredential.fromJSON(json);
+        _assert(credential, "argument-error" /* AuthErrorCode.ARGUMENT_ERROR */);
+        return credential;
+    }
+    static samlCredentialFromTaggedObject({ _tokenResponse: tokenResponse }) {
+        if (!tokenResponse) {
+            return null;
+        }
+        const { pendingToken, providerId } = tokenResponse;
+        if (!pendingToken || !providerId) {
+            return null;
+        }
+        try {
+            return SAMLAuthCredential._create(providerId, pendingToken);
+        }
+        catch (e) {
+            return null;
+        }
+    }
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 /**
  * Provider for generating an {@link OAuthCredential} for {@link ProviderId}.TWITTER.
  *
@@ -6118,9 +8814,82 @@ function _processCredentialSavingMfaContextIfNecessary(auth, operationType, cred
         throw error;
     });
 }
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Takes a set of UserInfo provider data and converts it to a set of names
+ */
+function providerDataAsNames(providerData) {
+    return new Set(providerData
+        .map(({ providerId }) => providerId)
+        .filter(pid => !!pid));
+}
+
+/**
+ * @license
+ * Copyright 2019 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Unlinks a provider from a user account.
+ *
+ * @param user - The user.
+ * @param providerId - The provider to unlink.
+ *
+ * @public
+ */
+async function unlink(user, providerId) {
+    const userInternal = getModularInstance(user);
+    await _assertLinkedStatus(true, userInternal, providerId);
+    const { providerUserInfo } = await deleteLinkedAccounts(userInternal.auth, {
+        idToken: await userInternal.getIdToken(),
+        deleteProvider: [providerId]
+    });
+    const providersLeft = providerDataAsNames(providerUserInfo || []);
+    userInternal.providerData = userInternal.providerData.filter(pd => providersLeft.has(pd.providerId));
+    if (!providersLeft.has("phone" /* ProviderId.PHONE */)) {
+        userInternal.phoneNumber = null;
+    }
+    await userInternal.auth._persistUserIfCurrent(userInternal);
+    return userInternal;
+}
 async function _link$1(user, credential, bypassAuthState = false) {
     const response = await _logoutIfInvalidated(user, credential._linkToIdToken(user.auth, await user.getIdToken()), bypassAuthState);
     return UserCredentialImpl._forOperation(user, "link" /* OperationType.LINK */, response);
+}
+async function _assertLinkedStatus(expected, user, provider) {
+    await _reloadWithoutSaving(user);
+    const providerIds = providerDataAsNames(user.providerData);
+    const code = expected === false
+        ? "provider-already-linked" /* AuthErrorCode.PROVIDER_ALREADY_LINKED */
+        : "no-such-provider" /* AuthErrorCode.NO_SUCH_PROVIDER */;
+    _assert(providerIds.has(provider) === expected, user.auth, code);
 }
 
 /**
@@ -6184,6 +8953,676 @@ async function _signInWithCredential(auth, credential, bypassAuthState = false) 
         await auth._updateCurrentUser(userCredential.user);
     }
     return userCredential;
+}
+/**
+ * Asynchronously signs in with the given credentials.
+ *
+ * @remarks
+ * An {@link AuthProvider} can be used to generate the credential.
+ *
+ * @param auth - The {@link Auth} instance.
+ * @param credential - The auth credential.
+ *
+ * @public
+ */
+async function signInWithCredential(auth, credential) {
+    return _signInWithCredential(_castAuth(auth), credential);
+}
+/**
+ * Links the user account with the given credentials.
+ *
+ * @remarks
+ * An {@link AuthProvider} can be used to generate the credential.
+ *
+ * @param user - The user.
+ * @param credential - The auth credential.
+ *
+ * @public
+ */
+async function linkWithCredential(user, credential) {
+    const userInternal = getModularInstance(user);
+    await _assertLinkedStatus(false, userInternal, credential.providerId);
+    return _link$1(userInternal, credential);
+}
+/**
+ * Re-authenticates a user using a fresh credential.
+ *
+ * @remarks
+ * Use before operations such as {@link updatePassword} that require tokens from recent sign-in
+ * attempts. This method can be used to recover from a `CREDENTIAL_TOO_OLD_LOGIN_AGAIN` error
+ * or a `TOKEN_EXPIRED` error.
+ *
+ * @param user - The user.
+ * @param credential - The auth credential.
+ *
+ * @public
+ */
+async function reauthenticateWithCredential(user, credential) {
+    return _reauthenticate(getModularInstance(user), credential);
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+async function signInWithCustomToken$1(auth, request) {
+    return _performSignInRequest(auth, "POST" /* HttpMethod.POST */, "/v1/accounts:signInWithCustomToken" /* Endpoint.SIGN_IN_WITH_CUSTOM_TOKEN */, _addTidIfNecessary(auth, request));
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Asynchronously signs in using a custom token.
+ *
+ * @remarks
+ * Custom tokens are used to integrate Firebase Auth with existing auth systems, and must
+ * be generated by an auth backend using the
+ * {@link https://firebase.google.com/docs/reference/admin/node/admin.auth.Auth#createcustomtoken | createCustomToken}
+ * method in the {@link https://firebase.google.com/docs/auth/admin | Admin SDK} .
+ *
+ * Fails with an error if the token is invalid, expired, or not accepted by the Firebase Auth service.
+ *
+ * @param auth - The {@link Auth} instance.
+ * @param customToken - The custom token to sign in with.
+ *
+ * @public
+ */
+async function signInWithCustomToken(auth, customToken) {
+    const authInternal = _castAuth(auth);
+    const response = await signInWithCustomToken$1(authInternal, {
+        token: customToken,
+        returnSecureToken: true
+    });
+    const cred = await UserCredentialImpl._fromIdTokenResponse(authInternal, "signIn" /* OperationType.SIGN_IN */, response);
+    await authInternal._updateCurrentUser(cred.user);
+    return cred;
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+class MultiFactorInfoImpl {
+    constructor(factorId, response) {
+        this.factorId = factorId;
+        this.uid = response.mfaEnrollmentId;
+        this.enrollmentTime = new Date(response.enrolledAt).toUTCString();
+        this.displayName = response.displayName;
+    }
+    static _fromServerResponse(auth, enrollment) {
+        if ('phoneInfo' in enrollment) {
+            return PhoneMultiFactorInfoImpl._fromServerResponse(auth, enrollment);
+        }
+        return _fail(auth, "internal-error" /* AuthErrorCode.INTERNAL_ERROR */);
+    }
+}
+class PhoneMultiFactorInfoImpl extends MultiFactorInfoImpl {
+    constructor(response) {
+        super("phone" /* FactorId.PHONE */, response);
+        this.phoneNumber = response.phoneInfo;
+    }
+    static _fromServerResponse(_auth, enrollment) {
+        return new PhoneMultiFactorInfoImpl(enrollment);
+    }
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+function _setActionCodeSettingsOnRequest(auth, request, actionCodeSettings) {
+    var _a;
+    _assert(((_a = actionCodeSettings.url) === null || _a === void 0 ? void 0 : _a.length) > 0, auth, "invalid-continue-uri" /* AuthErrorCode.INVALID_CONTINUE_URI */);
+    _assert(typeof actionCodeSettings.dynamicLinkDomain === 'undefined' ||
+        actionCodeSettings.dynamicLinkDomain.length > 0, auth, "invalid-dynamic-link-domain" /* AuthErrorCode.INVALID_DYNAMIC_LINK_DOMAIN */);
+    request.continueUrl = actionCodeSettings.url;
+    request.dynamicLinkDomain = actionCodeSettings.dynamicLinkDomain;
+    request.canHandleCodeInApp = actionCodeSettings.handleCodeInApp;
+    if (actionCodeSettings.iOS) {
+        _assert(actionCodeSettings.iOS.bundleId.length > 0, auth, "missing-ios-bundle-id" /* AuthErrorCode.MISSING_IOS_BUNDLE_ID */);
+        request.iOSBundleId = actionCodeSettings.iOS.bundleId;
+    }
+    if (actionCodeSettings.android) {
+        _assert(actionCodeSettings.android.packageName.length > 0, auth, "missing-android-pkg-name" /* AuthErrorCode.MISSING_ANDROID_PACKAGE_NAME */);
+        request.androidInstallApp = actionCodeSettings.android.installApp;
+        request.androidMinimumVersionCode =
+            actionCodeSettings.android.minimumVersion;
+        request.androidPackageName = actionCodeSettings.android.packageName;
+    }
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Sends a password reset email to the given email address.
+ *
+ * @remarks
+ * To complete the password reset, call {@link confirmPasswordReset} with the code supplied in
+ * the email sent to the user, along with the new password specified by the user.
+ *
+ * @example
+ * ```javascript
+ * const actionCodeSettings = {
+ *   url: 'https://www.example.com/?email=user@example.com',
+ *   iOS: {
+ *      bundleId: 'com.example.ios'
+ *   },
+ *   android: {
+ *     packageName: 'com.example.android',
+ *     installApp: true,
+ *     minimumVersion: '12'
+ *   },
+ *   handleCodeInApp: true
+ * };
+ * await sendPasswordResetEmail(auth, 'user@example.com', actionCodeSettings);
+ * // Obtain code from user.
+ * await confirmPasswordReset('user@example.com', code);
+ * ```
+ *
+ * @param auth - The {@link Auth} instance.
+ * @param email - The user's email address.
+ * @param actionCodeSettings - The {@link ActionCodeSettings}.
+ *
+ * @public
+ */
+async function sendPasswordResetEmail(auth, email, actionCodeSettings) {
+    const authModular = getModularInstance(auth);
+    const request = {
+        requestType: "PASSWORD_RESET" /* ActionCodeOperation.PASSWORD_RESET */,
+        email
+    };
+    if (actionCodeSettings) {
+        _setActionCodeSettingsOnRequest(authModular, request, actionCodeSettings);
+    }
+    await sendPasswordResetEmail$1(authModular, request);
+}
+/**
+ * Completes the password reset process, given a confirmation code and new password.
+ *
+ * @param auth - The {@link Auth} instance.
+ * @param oobCode - A confirmation code sent to the user.
+ * @param newPassword - The new password.
+ *
+ * @public
+ */
+async function confirmPasswordReset(auth, oobCode, newPassword) {
+    await resetPassword(getModularInstance(auth), {
+        oobCode,
+        newPassword
+    });
+    // Do not return the email.
+}
+/**
+ * Applies a verification code sent to the user by email or other out-of-band mechanism.
+ *
+ * @param auth - The {@link Auth} instance.
+ * @param oobCode - A verification code sent to the user.
+ *
+ * @public
+ */
+async function applyActionCode(auth, oobCode) {
+    await applyActionCode$1(getModularInstance(auth), { oobCode });
+}
+/**
+ * Checks a verification code sent to the user by email or other out-of-band mechanism.
+ *
+ * @returns metadata about the code.
+ *
+ * @param auth - The {@link Auth} instance.
+ * @param oobCode - A verification code sent to the user.
+ *
+ * @public
+ */
+async function checkActionCode(auth, oobCode) {
+    const authModular = getModularInstance(auth);
+    const response = await resetPassword(authModular, { oobCode });
+    // Email could be empty only if the request type is EMAIL_SIGNIN or
+    // VERIFY_AND_CHANGE_EMAIL.
+    // New email should not be empty if the request type is
+    // VERIFY_AND_CHANGE_EMAIL.
+    // Multi-factor info could not be empty if the request type is
+    // REVERT_SECOND_FACTOR_ADDITION.
+    const operation = response.requestType;
+    _assert(operation, authModular, "internal-error" /* AuthErrorCode.INTERNAL_ERROR */);
+    switch (operation) {
+        case "EMAIL_SIGNIN" /* ActionCodeOperation.EMAIL_SIGNIN */:
+            break;
+        case "VERIFY_AND_CHANGE_EMAIL" /* ActionCodeOperation.VERIFY_AND_CHANGE_EMAIL */:
+            _assert(response.newEmail, authModular, "internal-error" /* AuthErrorCode.INTERNAL_ERROR */);
+            break;
+        case "REVERT_SECOND_FACTOR_ADDITION" /* ActionCodeOperation.REVERT_SECOND_FACTOR_ADDITION */:
+            _assert(response.mfaInfo, authModular, "internal-error" /* AuthErrorCode.INTERNAL_ERROR */);
+        // fall through
+        default:
+            _assert(response.email, authModular, "internal-error" /* AuthErrorCode.INTERNAL_ERROR */);
+    }
+    // The multi-factor info for revert second factor addition
+    let multiFactorInfo = null;
+    if (response.mfaInfo) {
+        multiFactorInfo = MultiFactorInfoImpl._fromServerResponse(_castAuth(authModular), response.mfaInfo);
+    }
+    return {
+        data: {
+            email: (response.requestType === "VERIFY_AND_CHANGE_EMAIL" /* ActionCodeOperation.VERIFY_AND_CHANGE_EMAIL */
+                ? response.newEmail
+                : response.email) || null,
+            previousEmail: (response.requestType === "VERIFY_AND_CHANGE_EMAIL" /* ActionCodeOperation.VERIFY_AND_CHANGE_EMAIL */
+                ? response.email
+                : response.newEmail) || null,
+            multiFactorInfo
+        },
+        operation
+    };
+}
+/**
+ * Checks a password reset code sent to the user by email or other out-of-band mechanism.
+ *
+ * @returns the user's email address if valid.
+ *
+ * @param auth - The {@link Auth} instance.
+ * @param code - A verification code sent to the user.
+ *
+ * @public
+ */
+async function verifyPasswordResetCode(auth, code) {
+    const { data } = await checkActionCode(getModularInstance(auth), code);
+    // Email should always be present since a code was sent to it
+    return data.email;
+}
+/**
+ * Creates a new user account associated with the specified email address and password.
+ *
+ * @remarks
+ * On successful creation of the user account, this user will also be signed in to your application.
+ *
+ * User account creation can fail if the account already exists or the password is invalid.
+ *
+ * Note: The email address acts as a unique identifier for the user and enables an email-based
+ * password reset. This function will create a new user account and set the initial user password.
+ *
+ * @param auth - The {@link Auth} instance.
+ * @param email - The user's email address.
+ * @param password - The user's chosen password.
+ *
+ * @public
+ */
+async function createUserWithEmailAndPassword(auth, email, password) {
+    const authInternal = _castAuth(auth);
+    const response = await signUp(authInternal, {
+        returnSecureToken: true,
+        email,
+        password
+    });
+    const userCredential = await UserCredentialImpl._fromIdTokenResponse(authInternal, "signIn" /* OperationType.SIGN_IN */, response);
+    await authInternal._updateCurrentUser(userCredential.user);
+    return userCredential;
+}
+/**
+ * Asynchronously signs in using an email and password.
+ *
+ * @remarks
+ * Fails with an error if the email address and password do not match.
+ *
+ * Note: The user's password is NOT the password used to access the user's email account. The
+ * email address serves as a unique identifier for the user, and the password is used to access
+ * the user's account in your Firebase project. See also: {@link createUserWithEmailAndPassword}.
+ *
+ * @param auth - The {@link Auth} instance.
+ * @param email - The users email address.
+ * @param password - The users password.
+ *
+ * @public
+ */
+function signInWithEmailAndPassword(auth, email, password) {
+    return signInWithCredential(getModularInstance(auth), EmailAuthProvider.credential(email, password));
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Sends a sign-in email link to the user with the specified email.
+ *
+ * @remarks
+ * The sign-in operation has to always be completed in the app unlike other out of band email
+ * actions (password reset and email verifications). This is because, at the end of the flow,
+ * the user is expected to be signed in and their Auth state persisted within the app.
+ *
+ * To complete sign in with the email link, call {@link signInWithEmailLink} with the email
+ * address and the email link supplied in the email sent to the user.
+ *
+ * @example
+ * ```javascript
+ * const actionCodeSettings = {
+ *   url: 'https://www.example.com/?email=user@example.com',
+ *   iOS: {
+ *      bundleId: 'com.example.ios'
+ *   },
+ *   android: {
+ *     packageName: 'com.example.android',
+ *     installApp: true,
+ *     minimumVersion: '12'
+ *   },
+ *   handleCodeInApp: true
+ * };
+ * await sendSignInLinkToEmail(auth, 'user@example.com', actionCodeSettings);
+ * // Obtain emailLink from the user.
+ * if(isSignInWithEmailLink(auth, emailLink)) {
+ *   await signInWithEmailLink(auth, 'user@example.com', emailLink);
+ * }
+ * ```
+ *
+ * @param authInternal - The {@link Auth} instance.
+ * @param email - The user's email address.
+ * @param actionCodeSettings - The {@link ActionCodeSettings}.
+ *
+ * @public
+ */
+async function sendSignInLinkToEmail(auth, email, actionCodeSettings) {
+    const authModular = getModularInstance(auth);
+    const request = {
+        requestType: "EMAIL_SIGNIN" /* ActionCodeOperation.EMAIL_SIGNIN */,
+        email
+    };
+    _assert(actionCodeSettings.handleCodeInApp, authModular, "argument-error" /* AuthErrorCode.ARGUMENT_ERROR */);
+    if (actionCodeSettings) {
+        _setActionCodeSettingsOnRequest(authModular, request, actionCodeSettings);
+    }
+    await sendSignInLinkToEmail$1(authModular, request);
+}
+/**
+ * Checks if an incoming link is a sign-in with email link suitable for {@link signInWithEmailLink}.
+ *
+ * @param auth - The {@link Auth} instance.
+ * @param emailLink - The link sent to the user's email address.
+ *
+ * @public
+ */
+function isSignInWithEmailLink(auth, emailLink) {
+    const actionCodeUrl = ActionCodeURL.parseLink(emailLink);
+    return (actionCodeUrl === null || actionCodeUrl === void 0 ? void 0 : actionCodeUrl.operation) === "EMAIL_SIGNIN" /* ActionCodeOperation.EMAIL_SIGNIN */;
+}
+/**
+ * Asynchronously signs in using an email and sign-in email link.
+ *
+ * @remarks
+ * If no link is passed, the link is inferred from the current URL.
+ *
+ * Fails with an error if the email address is invalid or OTP in email link expires.
+ *
+ * Note: Confirm the link is a sign-in email link before calling this method firebase.auth.Auth.isSignInWithEmailLink.
+ *
+ * @example
+ * ```javascript
+ * const actionCodeSettings = {
+ *   url: 'https://www.example.com/?email=user@example.com',
+ *   iOS: {
+ *      bundleId: 'com.example.ios'
+ *   },
+ *   android: {
+ *     packageName: 'com.example.android',
+ *     installApp: true,
+ *     minimumVersion: '12'
+ *   },
+ *   handleCodeInApp: true
+ * };
+ * await sendSignInLinkToEmail(auth, 'user@example.com', actionCodeSettings);
+ * // Obtain emailLink from the user.
+ * if(isSignInWithEmailLink(auth, emailLink)) {
+ *   await signInWithEmailLink(auth, 'user@example.com', emailLink);
+ * }
+ * ```
+ *
+ * @param auth - The {@link Auth} instance.
+ * @param email - The user's email address.
+ * @param emailLink - The link sent to the user's email address.
+ *
+ * @public
+ */
+async function signInWithEmailLink(auth, email, emailLink) {
+    const authModular = getModularInstance(auth);
+    const credential = EmailAuthProvider.credentialWithLink(email, emailLink || _getCurrentUrl());
+    // Check if the tenant ID in the email link matches the tenant ID on Auth
+    // instance.
+    _assert(credential._tenantId === (authModular.tenantId || null), authModular, "tenant-id-mismatch" /* AuthErrorCode.TENANT_ID_MISMATCH */);
+    return signInWithCredential(authModular, credential);
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+async function createAuthUri(auth, request) {
+    return _performApiRequest(auth, "POST" /* HttpMethod.POST */, "/v1/accounts:createAuthUri" /* Endpoint.CREATE_AUTH_URI */, _addTidIfNecessary(auth, request));
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Gets the list of possible sign in methods for the given email address.
+ *
+ * @remarks
+ * This is useful to differentiate methods of sign-in for the same provider, eg.
+ * {@link EmailAuthProvider} which has 2 methods of sign-in,
+ * {@link SignInMethod}.EMAIL_PASSWORD and
+ * {@link SignInMethod}.EMAIL_LINK.
+ *
+ * @param auth - The {@link Auth} instance.
+ * @param email - The user's email address.
+ *
+ * @public
+ */
+async function fetchSignInMethodsForEmail(auth, email) {
+    // createAuthUri returns an error if continue URI is not http or https.
+    // For environments like Cordova, Chrome extensions, native frameworks, file
+    // systems, etc, use http://localhost as continue URL.
+    const continueUri = _isHttpOrHttps() ? _getCurrentUrl() : 'http://localhost';
+    const request = {
+        identifier: email,
+        continueUri
+    };
+    const { signinMethods } = await createAuthUri(getModularInstance(auth), request);
+    return signinMethods || [];
+}
+/**
+ * Sends a verification email to a user.
+ *
+ * @remarks
+ * The verification process is completed by calling {@link applyActionCode}.
+ *
+ * @example
+ * ```javascript
+ * const actionCodeSettings = {
+ *   url: 'https://www.example.com/?email=user@example.com',
+ *   iOS: {
+ *      bundleId: 'com.example.ios'
+ *   },
+ *   android: {
+ *     packageName: 'com.example.android',
+ *     installApp: true,
+ *     minimumVersion: '12'
+ *   },
+ *   handleCodeInApp: true
+ * };
+ * await sendEmailVerification(user, actionCodeSettings);
+ * // Obtain code from the user.
+ * await applyActionCode(auth, code);
+ * ```
+ *
+ * @param user - The user.
+ * @param actionCodeSettings - The {@link ActionCodeSettings}.
+ *
+ * @public
+ */
+async function sendEmailVerification(user, actionCodeSettings) {
+    const userInternal = getModularInstance(user);
+    const idToken = await user.getIdToken();
+    const request = {
+        requestType: "VERIFY_EMAIL" /* ActionCodeOperation.VERIFY_EMAIL */,
+        idToken
+    };
+    if (actionCodeSettings) {
+        _setActionCodeSettingsOnRequest(userInternal.auth, request, actionCodeSettings);
+    }
+    const { email } = await sendEmailVerification$1(userInternal.auth, request);
+    if (email !== user.email) {
+        await user.reload();
+    }
+}
+/**
+ * Sends a verification email to a new email address.
+ *
+ * @remarks
+ * The user's email will be updated to the new one after being verified.
+ *
+ * If you have a custom email action handler, you can complete the verification process by calling
+ * {@link applyActionCode}.
+ *
+ * @example
+ * ```javascript
+ * const actionCodeSettings = {
+ *   url: 'https://www.example.com/?email=user@example.com',
+ *   iOS: {
+ *      bundleId: 'com.example.ios'
+ *   },
+ *   android: {
+ *     packageName: 'com.example.android',
+ *     installApp: true,
+ *     minimumVersion: '12'
+ *   },
+ *   handleCodeInApp: true
+ * };
+ * await verifyBeforeUpdateEmail(user, 'newemail@example.com', actionCodeSettings);
+ * // Obtain code from the user.
+ * await applyActionCode(auth, code);
+ * ```
+ *
+ * @param user - The user.
+ * @param newEmail - The new email address to be verified before update.
+ * @param actionCodeSettings - The {@link ActionCodeSettings}.
+ *
+ * @public
+ */
+async function verifyBeforeUpdateEmail(user, newEmail, actionCodeSettings) {
+    const userInternal = getModularInstance(user);
+    const idToken = await user.getIdToken();
+    const request = {
+        requestType: "VERIFY_AND_CHANGE_EMAIL" /* ActionCodeOperation.VERIFY_AND_CHANGE_EMAIL */,
+        idToken,
+        newEmail
+    };
+    if (actionCodeSettings) {
+        _setActionCodeSettingsOnRequest(userInternal.auth, request, actionCodeSettings);
+    }
+    const { email } = await verifyAndChangeEmail(userInternal.auth, request);
+    if (email !== user.email) {
+        // If the local copy of the email on user is outdated, reload the
+        // user.
+        await user.reload();
+    }
 }
 
 /**
@@ -6254,6 +9693,214 @@ async function updateProfile(user, { displayName, photoURL: photoUrl }) {
     await userInternal._updateTokensIfNecessary(response);
 }
 /**
+ * Updates the user's email address.
+ *
+ * @remarks
+ * An email will be sent to the original email address (if it was set) that allows to revoke the
+ * email address change, in order to protect them from account hijacking.
+ *
+ * Important: this is a security sensitive operation that requires the user to have recently signed
+ * in. If this requirement isn't met, ask the user to authenticate again and then call
+ * {@link reauthenticateWithCredential}.
+ *
+ * @param user - The user.
+ * @param newEmail - The new email address.
+ *
+ * @public
+ */
+function updateEmail(user, newEmail) {
+    return updateEmailOrPassword(getModularInstance(user), newEmail, null);
+}
+/**
+ * Updates the user's password.
+ *
+ * @remarks
+ * Important: this is a security sensitive operation that requires the user to have recently signed
+ * in. If this requirement isn't met, ask the user to authenticate again and then call
+ * {@link reauthenticateWithCredential}.
+ *
+ * @param user - The user.
+ * @param newPassword - The new password.
+ *
+ * @public
+ */
+function updatePassword(user, newPassword) {
+    return updateEmailOrPassword(getModularInstance(user), null, newPassword);
+}
+async function updateEmailOrPassword(user, email, password) {
+    const { auth } = user;
+    const idToken = await user.getIdToken();
+    const request = {
+        idToken,
+        returnSecureToken: true
+    };
+    if (email) {
+        request.email = email;
+    }
+    if (password) {
+        request.password = password;
+    }
+    const response = await _logoutIfInvalidated(user, updateEmailPassword(auth, request));
+    await user._updateTokensIfNecessary(response, /* reload */ true);
+}
+
+/**
+ * @license
+ * Copyright 2019 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Parse the `AdditionalUserInfo` from the ID token response.
+ *
+ */
+function _fromIdTokenResponse(idTokenResponse) {
+    var _a, _b;
+    if (!idTokenResponse) {
+        return null;
+    }
+    const { providerId } = idTokenResponse;
+    const profile = idTokenResponse.rawUserInfo
+        ? JSON.parse(idTokenResponse.rawUserInfo)
+        : {};
+    const isNewUser = idTokenResponse.isNewUser ||
+        idTokenResponse.kind === "identitytoolkit#SignupNewUserResponse" /* IdTokenResponseKind.SignupNewUser */;
+    if (!providerId && (idTokenResponse === null || idTokenResponse === void 0 ? void 0 : idTokenResponse.idToken)) {
+        const signInProvider = (_b = (_a = _parseToken(idTokenResponse.idToken)) === null || _a === void 0 ? void 0 : _a.firebase) === null || _b === void 0 ? void 0 : _b['sign_in_provider'];
+        if (signInProvider) {
+            const filteredProviderId = signInProvider !== "anonymous" /* ProviderId.ANONYMOUS */ &&
+                signInProvider !== "custom" /* ProviderId.CUSTOM */
+                ? signInProvider
+                : null;
+            // Uses generic class in accordance with the legacy SDK.
+            return new GenericAdditionalUserInfo(isNewUser, filteredProviderId);
+        }
+    }
+    if (!providerId) {
+        return null;
+    }
+    switch (providerId) {
+        case "facebook.com" /* ProviderId.FACEBOOK */:
+            return new FacebookAdditionalUserInfo(isNewUser, profile);
+        case "github.com" /* ProviderId.GITHUB */:
+            return new GithubAdditionalUserInfo(isNewUser, profile);
+        case "google.com" /* ProviderId.GOOGLE */:
+            return new GoogleAdditionalUserInfo(isNewUser, profile);
+        case "twitter.com" /* ProviderId.TWITTER */:
+            return new TwitterAdditionalUserInfo(isNewUser, profile, idTokenResponse.screenName || null);
+        case "custom" /* ProviderId.CUSTOM */:
+        case "anonymous" /* ProviderId.ANONYMOUS */:
+            return new GenericAdditionalUserInfo(isNewUser, null);
+        default:
+            return new GenericAdditionalUserInfo(isNewUser, providerId, profile);
+    }
+}
+class GenericAdditionalUserInfo {
+    constructor(isNewUser, providerId, profile = {}) {
+        this.isNewUser = isNewUser;
+        this.providerId = providerId;
+        this.profile = profile;
+    }
+}
+class FederatedAdditionalUserInfoWithUsername extends GenericAdditionalUserInfo {
+    constructor(isNewUser, providerId, profile, username) {
+        super(isNewUser, providerId, profile);
+        this.username = username;
+    }
+}
+class FacebookAdditionalUserInfo extends GenericAdditionalUserInfo {
+    constructor(isNewUser, profile) {
+        super(isNewUser, "facebook.com" /* ProviderId.FACEBOOK */, profile);
+    }
+}
+class GithubAdditionalUserInfo extends FederatedAdditionalUserInfoWithUsername {
+    constructor(isNewUser, profile) {
+        super(isNewUser, "github.com" /* ProviderId.GITHUB */, profile, typeof (profile === null || profile === void 0 ? void 0 : profile.login) === 'string' ? profile === null || profile === void 0 ? void 0 : profile.login : null);
+    }
+}
+class GoogleAdditionalUserInfo extends GenericAdditionalUserInfo {
+    constructor(isNewUser, profile) {
+        super(isNewUser, "google.com" /* ProviderId.GOOGLE */, profile);
+    }
+}
+class TwitterAdditionalUserInfo extends FederatedAdditionalUserInfoWithUsername {
+    constructor(isNewUser, profile, screenName) {
+        super(isNewUser, "twitter.com" /* ProviderId.TWITTER */, profile, screenName);
+    }
+}
+/**
+ * Extracts provider specific {@link AdditionalUserInfo} for the given credential.
+ *
+ * @param userCredential - The user credential.
+ *
+ * @public
+ */
+function getAdditionalUserInfo(userCredential) {
+    const { user, _tokenResponse } = userCredential;
+    if (user.isAnonymous && !_tokenResponse) {
+        // Handle the special case where signInAnonymously() gets called twice.
+        // No network call is made so there's nothing to actually fill this in
+        return {
+            providerId: null,
+            isNewUser: false,
+            profile: null
+        };
+    }
+    return _fromIdTokenResponse(_tokenResponse);
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+// Non-optional auth methods.
+/**
+ * Changes the type of persistence on the {@link Auth} instance for the currently saved
+ * `Auth` session and applies this type of persistence for future sign-in requests, including
+ * sign-in with redirect requests.
+ *
+ * @remarks
+ * This makes it easy for a user signing in to specify whether their session should be
+ * remembered or not. It also makes it easier to never persist the `Auth` state for applications
+ * that are shared by other users or have sensitive data.
+ *
+ * @example
+ * ```javascript
+ * setPersistence(auth, browserSessionPersistence);
+ * ```
+ *
+ * @param auth - The {@link Auth} instance.
+ * @param persistence - The {@link Persistence} to use.
+ * @returns A `Promise` that resolves once the persistence change has completed
+ *
+ * @public
+ */
+function setPersistence(auth, persistence) {
+    return getModularInstance(auth).setPersistence(persistence);
+}
+/**
  * Adds an observer for changes to the signed-in user's ID token.
  *
  * @remarks
@@ -6303,6 +9950,37 @@ function onAuthStateChanged(auth, nextOrObserver, error, completed) {
     return getModularInstance(auth).onAuthStateChanged(nextOrObserver, error, completed);
 }
 /**
+ * Sets the current language to the default device/browser preference.
+ *
+ * @param auth - The {@link Auth} instance.
+ *
+ * @public
+ */
+function useDeviceLanguage(auth) {
+    getModularInstance(auth).useDeviceLanguage();
+}
+/**
+ * Asynchronously sets the provided user as {@link Auth.currentUser} on the
+ * {@link Auth} instance.
+ *
+ * @remarks
+ * A new instance copy of the user provided will be made and set as currentUser.
+ *
+ * This will trigger {@link onAuthStateChanged} and {@link onIdTokenChanged} listeners
+ * like other sign in methods.
+ *
+ * The operation fails with an error if the user to be updated belongs to a different Firebase
+ * project.
+ *
+ * @param auth - The {@link Auth} instance.
+ * @param user - The new {@link User}.
+ *
+ * @public
+ */
+function updateCurrentUser(auth, user) {
+    return getModularInstance(auth).updateCurrentUser(user);
+}
+/**
  * Signs out the current user.
  *
  * @param auth - The {@link Auth} instance.
@@ -6311,6 +9989,226 @@ function onAuthStateChanged(auth, nextOrObserver, error, completed) {
  */
 function signOut(auth) {
     return getModularInstance(auth).signOut();
+}
+/**
+ * Deletes and signs out the user.
+ *
+ * @remarks
+ * Important: this is a security-sensitive operation that requires the user to have recently
+ * signed in. If this requirement isn't met, ask the user to authenticate again and then call
+ * {@link reauthenticateWithCredential}.
+ *
+ * @param user - The user.
+ *
+ * @public
+ */
+async function deleteUser(user) {
+    return getModularInstance(user).delete();
+}
+
+class MultiFactorSessionImpl {
+    constructor(type, credential, auth) {
+        this.type = type;
+        this.credential = credential;
+        this.auth = auth;
+    }
+    static _fromIdtoken(idToken, auth) {
+        return new MultiFactorSessionImpl("enroll" /* MultiFactorSessionType.ENROLL */, idToken, auth);
+    }
+    static _fromMfaPendingCredential(mfaPendingCredential) {
+        return new MultiFactorSessionImpl("signin" /* MultiFactorSessionType.SIGN_IN */, mfaPendingCredential);
+    }
+    toJSON() {
+        const key = this.type === "enroll" /* MultiFactorSessionType.ENROLL */
+            ? 'idToken'
+            : 'pendingCredential';
+        return {
+            multiFactorSession: {
+                [key]: this.credential
+            }
+        };
+    }
+    static fromJSON(obj) {
+        var _a, _b;
+        if (obj === null || obj === void 0 ? void 0 : obj.multiFactorSession) {
+            if ((_a = obj.multiFactorSession) === null || _a === void 0 ? void 0 : _a.pendingCredential) {
+                return MultiFactorSessionImpl._fromMfaPendingCredential(obj.multiFactorSession.pendingCredential);
+            }
+            else if ((_b = obj.multiFactorSession) === null || _b === void 0 ? void 0 : _b.idToken) {
+                return MultiFactorSessionImpl._fromIdtoken(obj.multiFactorSession.idToken);
+            }
+        }
+        return null;
+    }
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+class MultiFactorResolverImpl {
+    constructor(session, hints, signInResolver) {
+        this.session = session;
+        this.hints = hints;
+        this.signInResolver = signInResolver;
+    }
+    /** @internal */
+    static _fromError(authExtern, error) {
+        const auth = _castAuth(authExtern);
+        const serverResponse = error.customData._serverResponse;
+        const hints = (serverResponse.mfaInfo || []).map(enrollment => MultiFactorInfoImpl._fromServerResponse(auth, enrollment));
+        _assert(serverResponse.mfaPendingCredential, auth, "internal-error" /* AuthErrorCode.INTERNAL_ERROR */);
+        const session = MultiFactorSessionImpl._fromMfaPendingCredential(serverResponse.mfaPendingCredential);
+        return new MultiFactorResolverImpl(session, hints, async (assertion) => {
+            const mfaResponse = await assertion._process(auth, session);
+            // Clear out the unneeded fields from the old login response
+            delete serverResponse.mfaInfo;
+            delete serverResponse.mfaPendingCredential;
+            // Use in the new token & refresh token in the old response
+            const idTokenResponse = Object.assign(Object.assign({}, serverResponse), { idToken: mfaResponse.idToken, refreshToken: mfaResponse.refreshToken });
+            // TODO: we should collapse this switch statement into UserCredentialImpl._forOperation and have it support the SIGN_IN case
+            switch (error.operationType) {
+                case "signIn" /* OperationType.SIGN_IN */:
+                    const userCredential = await UserCredentialImpl._fromIdTokenResponse(auth, error.operationType, idTokenResponse);
+                    await auth._updateCurrentUser(userCredential.user);
+                    return userCredential;
+                case "reauthenticate" /* OperationType.REAUTHENTICATE */:
+                    _assert(error.user, auth, "internal-error" /* AuthErrorCode.INTERNAL_ERROR */);
+                    return UserCredentialImpl._forOperation(error.user, error.operationType, idTokenResponse);
+                default:
+                    _fail(auth, "internal-error" /* AuthErrorCode.INTERNAL_ERROR */);
+            }
+        });
+    }
+    async resolveSignIn(assertionExtern) {
+        const assertion = assertionExtern;
+        return this.signInResolver(assertion);
+    }
+}
+/**
+ * Provides a {@link MultiFactorResolver} suitable for completion of a
+ * multi-factor flow.
+ *
+ * @param auth - The {@link Auth} instance.
+ * @param error - The {@link MultiFactorError} raised during a sign-in, or
+ * reauthentication operation.
+ *
+ * @public
+ */
+function getMultiFactorResolver(auth, error) {
+    var _a;
+    const authModular = getModularInstance(auth);
+    const errorInternal = error;
+    _assert(error.customData.operationType, authModular, "argument-error" /* AuthErrorCode.ARGUMENT_ERROR */);
+    _assert((_a = errorInternal.customData._serverResponse) === null || _a === void 0 ? void 0 : _a.mfaPendingCredential, authModular, "argument-error" /* AuthErrorCode.ARGUMENT_ERROR */);
+    return MultiFactorResolverImpl._fromError(authModular, errorInternal);
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+function startEnrollPhoneMfa(auth, request) {
+    return _performApiRequest(auth, "POST" /* HttpMethod.POST */, "/v2/accounts/mfaEnrollment:start" /* Endpoint.START_MFA_ENROLLMENT */, _addTidIfNecessary(auth, request));
+}
+function finalizeEnrollPhoneMfa(auth, request) {
+    return _performApiRequest(auth, "POST" /* HttpMethod.POST */, "/v2/accounts/mfaEnrollment:finalize" /* Endpoint.FINALIZE_MFA_ENROLLMENT */, _addTidIfNecessary(auth, request));
+}
+function withdrawMfa(auth, request) {
+    return _performApiRequest(auth, "POST" /* HttpMethod.POST */, "/v2/accounts/mfaEnrollment:withdraw" /* Endpoint.WITHDRAW_MFA */, _addTidIfNecessary(auth, request));
+}
+
+class MultiFactorUserImpl {
+    constructor(user) {
+        this.user = user;
+        this.enrolledFactors = [];
+        user._onReload(userInfo => {
+            if (userInfo.mfaInfo) {
+                this.enrolledFactors = userInfo.mfaInfo.map(enrollment => MultiFactorInfoImpl._fromServerResponse(user.auth, enrollment));
+            }
+        });
+    }
+    static _fromUser(user) {
+        return new MultiFactorUserImpl(user);
+    }
+    async getSession() {
+        return MultiFactorSessionImpl._fromIdtoken(await this.user.getIdToken(), this.user.auth);
+    }
+    async enroll(assertionExtern, displayName) {
+        const assertion = assertionExtern;
+        const session = (await this.getSession());
+        const finalizeMfaResponse = await _logoutIfInvalidated(this.user, assertion._process(this.user.auth, session, displayName));
+        // New tokens will be issued after enrollment of the new second factors.
+        // They need to be updated on the user.
+        await this.user._updateTokensIfNecessary(finalizeMfaResponse);
+        // The user needs to be reloaded to get the new multi-factor information
+        // from server. USER_RELOADED event will be triggered and `enrolledFactors`
+        // will be updated.
+        return this.user.reload();
+    }
+    async unenroll(infoOrUid) {
+        const mfaEnrollmentId = typeof infoOrUid === 'string' ? infoOrUid : infoOrUid.uid;
+        const idToken = await this.user.getIdToken();
+        try {
+            const idTokenResponse = await _logoutIfInvalidated(this.user, withdrawMfa(this.user.auth, {
+                idToken,
+                mfaEnrollmentId
+            }));
+            // Remove the second factor from the user's list.
+            this.enrolledFactors = this.enrolledFactors.filter(({ uid }) => uid !== mfaEnrollmentId);
+            // Depending on whether the backend decided to revoke the user's session,
+            // the tokenResponse may be empty. If the tokens were not updated (and they
+            // are now invalid), reloading the user will discover this and invalidate
+            // the user's state accordingly.
+            await this.user._updateTokensIfNecessary(idTokenResponse);
+            await this.user.reload();
+        }
+        catch (e) {
+            throw e;
+        }
+    }
+}
+const multiFactorUserCache = new WeakMap();
+/**
+ * The {@link MultiFactorUser} corresponding to the user.
+ *
+ * @remarks
+ * This is used to access all multi-factor properties and operations related to the user.
+ *
+ * @param user - The user.
+ *
+ * @public
+ */
+function multiFactor(user) {
+    const userModular = getModularInstance(user);
+    if (!multiFactorUserCache.has(userModular)) {
+        multiFactorUserCache.set(userModular, MultiFactorUserImpl._fromUser(userModular));
+    }
+    return multiFactorUserCache.get(userModular);
 }
 
 const STORAGE_AVAILABLE_KEY = '__sak';
@@ -7330,6 +11228,49 @@ const indexedDBLocalPersistence = IndexedDBLocalPersistence;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+function startSignInPhoneMfa(auth, request) {
+    return _performApiRequest(auth, "POST" /* HttpMethod.POST */, "/v2/accounts/mfaSignIn:start" /* Endpoint.START_MFA_SIGN_IN */, _addTidIfNecessary(auth, request));
+}
+function finalizeSignInPhoneMfa(auth, request) {
+    return _performApiRequest(auth, "POST" /* HttpMethod.POST */, "/v2/accounts/mfaSignIn:finalize" /* Endpoint.FINALIZE_MFA_SIGN_IN */, _addTidIfNecessary(auth, request));
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+async function getRecaptchaParams(auth) {
+    return ((await _performApiRequest(auth, "GET" /* HttpMethod.GET */, "/v1/recaptchaParams" /* Endpoint.GET_RECAPTCHA_PARAM */)).recaptchaSiteKey || '');
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 function getScriptParentElement() {
     var _a, _b;
     return (_b = (_a = document.getElementsByTagName('head')) === null || _a === void 0 ? void 0 : _a[0]) !== null && _b !== void 0 ? _b : document;
@@ -7353,7 +11294,791 @@ function _loadJS(url) {
 function _generateCallbackName(prefix) {
     return `__${prefix}${Math.floor(Math.random() * 1000000)}`;
 }
-new Delay(30000, 60000);
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+const _SOLVE_TIME_MS = 500;
+const _EXPIRATION_TIME_MS = 60000;
+const _WIDGET_ID_START = 1000000000000;
+class MockReCaptcha {
+    constructor(auth) {
+        this.auth = auth;
+        this.counter = _WIDGET_ID_START;
+        this._widgets = new Map();
+    }
+    render(container, parameters) {
+        const id = this.counter;
+        this._widgets.set(id, new MockWidget(container, this.auth.name, parameters || {}));
+        this.counter++;
+        return id;
+    }
+    reset(optWidgetId) {
+        var _a;
+        const id = optWidgetId || _WIDGET_ID_START;
+        void ((_a = this._widgets.get(id)) === null || _a === void 0 ? void 0 : _a.delete());
+        this._widgets.delete(id);
+    }
+    getResponse(optWidgetId) {
+        var _a;
+        const id = optWidgetId || _WIDGET_ID_START;
+        return ((_a = this._widgets.get(id)) === null || _a === void 0 ? void 0 : _a.getResponse()) || '';
+    }
+    async execute(optWidgetId) {
+        var _a;
+        const id = optWidgetId || _WIDGET_ID_START;
+        void ((_a = this._widgets.get(id)) === null || _a === void 0 ? void 0 : _a.execute());
+        return '';
+    }
+}
+class MockWidget {
+    constructor(containerOrId, appName, params) {
+        this.params = params;
+        this.timerId = null;
+        this.deleted = false;
+        this.responseToken = null;
+        this.clickHandler = () => {
+            this.execute();
+        };
+        const container = typeof containerOrId === 'string'
+            ? document.getElementById(containerOrId)
+            : containerOrId;
+        _assert(container, "argument-error" /* AuthErrorCode.ARGUMENT_ERROR */, { appName });
+        this.container = container;
+        this.isVisible = this.params.size !== 'invisible';
+        if (this.isVisible) {
+            this.execute();
+        }
+        else {
+            this.container.addEventListener('click', this.clickHandler);
+        }
+    }
+    getResponse() {
+        this.checkIfDeleted();
+        return this.responseToken;
+    }
+    delete() {
+        this.checkIfDeleted();
+        this.deleted = true;
+        if (this.timerId) {
+            clearTimeout(this.timerId);
+            this.timerId = null;
+        }
+        this.container.removeEventListener('click', this.clickHandler);
+    }
+    execute() {
+        this.checkIfDeleted();
+        if (this.timerId) {
+            return;
+        }
+        this.timerId = window.setTimeout(() => {
+            this.responseToken = generateRandomAlphaNumericString(50);
+            const { callback, 'expired-callback': expiredCallback } = this.params;
+            if (callback) {
+                try {
+                    callback(this.responseToken);
+                }
+                catch (e) { }
+            }
+            this.timerId = window.setTimeout(() => {
+                this.timerId = null;
+                this.responseToken = null;
+                if (expiredCallback) {
+                    try {
+                        expiredCallback();
+                    }
+                    catch (e) { }
+                }
+                if (this.isVisible) {
+                    this.execute();
+                }
+            }, _EXPIRATION_TIME_MS);
+        }, _SOLVE_TIME_MS);
+    }
+    checkIfDeleted() {
+        if (this.deleted) {
+            throw new Error('reCAPTCHA mock was already deleted!');
+        }
+    }
+}
+function generateRandomAlphaNumericString(len) {
+    const chars = [];
+    const allowedChars = '1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    for (let i = 0; i < len; i++) {
+        chars.push(allowedChars.charAt(Math.floor(Math.random() * allowedChars.length)));
+    }
+    return chars.join('');
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+// ReCaptcha will load using the same callback, so the callback function needs
+// to be kept around
+const _JSLOAD_CALLBACK = _generateCallbackName('rcb');
+const NETWORK_TIMEOUT_DELAY = new Delay(30000, 60000);
+const RECAPTCHA_BASE = 'https://www.google.com/recaptcha/api.js?';
+/**
+ * Loader for the GReCaptcha library. There should only ever be one of this.
+ */
+class ReCaptchaLoaderImpl {
+    constructor() {
+        var _a;
+        this.hostLanguage = '';
+        this.counter = 0;
+        /**
+         * Check for `render()` method. `window.grecaptcha` will exist if the Enterprise
+         * version of the ReCAPTCHA script was loaded by someone else (e.g. App Check) but
+         * `window.grecaptcha.render()` will not. Another load will add it.
+         */
+        this.librarySeparatelyLoaded = !!((_a = _window().grecaptcha) === null || _a === void 0 ? void 0 : _a.render);
+    }
+    load(auth, hl = '') {
+        _assert(isHostLanguageValid(hl), auth, "argument-error" /* AuthErrorCode.ARGUMENT_ERROR */);
+        if (this.shouldResolveImmediately(hl)) {
+            return Promise.resolve(_window().grecaptcha);
+        }
+        return new Promise((resolve, reject) => {
+            const networkTimeout = _window().setTimeout(() => {
+                reject(_createError(auth, "network-request-failed" /* AuthErrorCode.NETWORK_REQUEST_FAILED */));
+            }, NETWORK_TIMEOUT_DELAY.get());
+            _window()[_JSLOAD_CALLBACK] = () => {
+                _window().clearTimeout(networkTimeout);
+                delete _window()[_JSLOAD_CALLBACK];
+                const recaptcha = _window().grecaptcha;
+                if (!recaptcha) {
+                    reject(_createError(auth, "internal-error" /* AuthErrorCode.INTERNAL_ERROR */));
+                    return;
+                }
+                // Wrap the greptcha render function so that we know if the developer has
+                // called it separately
+                const render = recaptcha.render;
+                recaptcha.render = (container, params) => {
+                    const widgetId = render(container, params);
+                    this.counter++;
+                    return widgetId;
+                };
+                this.hostLanguage = hl;
+                resolve(recaptcha);
+            };
+            const url = `${RECAPTCHA_BASE}?${querystring({
+                onload: _JSLOAD_CALLBACK,
+                render: 'explicit',
+                hl
+            })}`;
+            _loadJS(url).catch(() => {
+                clearTimeout(networkTimeout);
+                reject(_createError(auth, "internal-error" /* AuthErrorCode.INTERNAL_ERROR */));
+            });
+        });
+    }
+    clearedOneInstance() {
+        this.counter--;
+    }
+    shouldResolveImmediately(hl) {
+        var _a;
+        // We can resolve immediately if:
+        //   • grecaptcha is already defined AND (
+        //     1. the requested language codes are the same OR
+        //     2. there exists already a ReCaptcha on the page
+        //     3. the library was already loaded by the app
+        // In cases (2) and (3), we _can't_ reload as it would break the recaptchas
+        // that are already in the page
+        return (!!((_a = _window().grecaptcha) === null || _a === void 0 ? void 0 : _a.render) &&
+            (hl === this.hostLanguage ||
+                this.counter > 0 ||
+                this.librarySeparatelyLoaded));
+    }
+}
+function isHostLanguageValid(hl) {
+    return hl.length <= 6 && /^\s*[a-zA-Z0-9\-]*\s*$/.test(hl);
+}
+class MockReCaptchaLoaderImpl {
+    async load(auth) {
+        return new MockReCaptcha(auth);
+    }
+    clearedOneInstance() { }
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+const RECAPTCHA_VERIFIER_TYPE = 'recaptcha';
+const DEFAULT_PARAMS = {
+    theme: 'light',
+    type: 'image'
+};
+/**
+ * An {@link https://www.google.com/recaptcha/ | reCAPTCHA}-based application verifier.
+ *
+ * @public
+ */
+class RecaptchaVerifier {
+    /**
+     *
+     * @param containerOrId - The reCAPTCHA container parameter.
+     *
+     * @remarks
+     * This has different meaning depending on whether the reCAPTCHA is hidden or visible. For a
+     * visible reCAPTCHA the container must be empty. If a string is used, it has to correspond to
+     * an element ID. The corresponding element must also must be in the DOM at the time of
+     * initialization.
+     *
+     * @param parameters - The optional reCAPTCHA parameters.
+     *
+     * @remarks
+     * Check the reCAPTCHA docs for a comprehensive list. All parameters are accepted except for
+     * the sitekey. Firebase Auth backend provisions a reCAPTCHA for each project and will
+     * configure this upon rendering. For an invisible reCAPTCHA, a size key must have the value
+     * 'invisible'.
+     *
+     * @param authExtern - The corresponding Firebase {@link Auth} instance.
+     */
+    constructor(containerOrId, parameters = Object.assign({}, DEFAULT_PARAMS), authExtern) {
+        this.parameters = parameters;
+        /**
+         * The application verifier type.
+         *
+         * @remarks
+         * For a reCAPTCHA verifier, this is 'recaptcha'.
+         */
+        this.type = RECAPTCHA_VERIFIER_TYPE;
+        this.destroyed = false;
+        this.widgetId = null;
+        this.tokenChangeListeners = new Set();
+        this.renderPromise = null;
+        this.recaptcha = null;
+        this.auth = _castAuth(authExtern);
+        this.isInvisible = this.parameters.size === 'invisible';
+        _assert(typeof document !== 'undefined', this.auth, "operation-not-supported-in-this-environment" /* AuthErrorCode.OPERATION_NOT_SUPPORTED */);
+        const container = typeof containerOrId === 'string'
+            ? document.getElementById(containerOrId)
+            : containerOrId;
+        _assert(container, this.auth, "argument-error" /* AuthErrorCode.ARGUMENT_ERROR */);
+        this.container = container;
+        this.parameters.callback = this.makeTokenCallback(this.parameters.callback);
+        this._recaptchaLoader = this.auth.settings.appVerificationDisabledForTesting
+            ? new MockReCaptchaLoaderImpl()
+            : new ReCaptchaLoaderImpl();
+        this.validateStartingState();
+        // TODO: Figure out if sdk version is needed
+    }
+    /**
+     * Waits for the user to solve the reCAPTCHA and resolves with the reCAPTCHA token.
+     *
+     * @returns A Promise for the reCAPTCHA token.
+     */
+    async verify() {
+        this.assertNotDestroyed();
+        const id = await this.render();
+        const recaptcha = this.getAssertedRecaptcha();
+        const response = recaptcha.getResponse(id);
+        if (response) {
+            return response;
+        }
+        return new Promise(resolve => {
+            const tokenChange = (token) => {
+                if (!token) {
+                    return; // Ignore token expirations.
+                }
+                this.tokenChangeListeners.delete(tokenChange);
+                resolve(token);
+            };
+            this.tokenChangeListeners.add(tokenChange);
+            if (this.isInvisible) {
+                recaptcha.execute(id);
+            }
+        });
+    }
+    /**
+     * Renders the reCAPTCHA widget on the page.
+     *
+     * @returns A Promise that resolves with the reCAPTCHA widget ID.
+     */
+    render() {
+        try {
+            this.assertNotDestroyed();
+        }
+        catch (e) {
+            // This method returns a promise. Since it's not async (we want to return the
+            // _same_ promise if rendering is still occurring), the API surface should
+            // reject with the error rather than just throw
+            return Promise.reject(e);
+        }
+        if (this.renderPromise) {
+            return this.renderPromise;
+        }
+        this.renderPromise = this.makeRenderPromise().catch(e => {
+            this.renderPromise = null;
+            throw e;
+        });
+        return this.renderPromise;
+    }
+    /** @internal */
+    _reset() {
+        this.assertNotDestroyed();
+        if (this.widgetId !== null) {
+            this.getAssertedRecaptcha().reset(this.widgetId);
+        }
+    }
+    /**
+     * Clears the reCAPTCHA widget from the page and destroys the instance.
+     */
+    clear() {
+        this.assertNotDestroyed();
+        this.destroyed = true;
+        this._recaptchaLoader.clearedOneInstance();
+        if (!this.isInvisible) {
+            this.container.childNodes.forEach(node => {
+                this.container.removeChild(node);
+            });
+        }
+    }
+    validateStartingState() {
+        _assert(!this.parameters.sitekey, this.auth, "argument-error" /* AuthErrorCode.ARGUMENT_ERROR */);
+        _assert(this.isInvisible || !this.container.hasChildNodes(), this.auth, "argument-error" /* AuthErrorCode.ARGUMENT_ERROR */);
+        _assert(typeof document !== 'undefined', this.auth, "operation-not-supported-in-this-environment" /* AuthErrorCode.OPERATION_NOT_SUPPORTED */);
+    }
+    makeTokenCallback(existing) {
+        return token => {
+            this.tokenChangeListeners.forEach(listener => listener(token));
+            if (typeof existing === 'function') {
+                existing(token);
+            }
+            else if (typeof existing === 'string') {
+                const globalFunc = _window()[existing];
+                if (typeof globalFunc === 'function') {
+                    globalFunc(token);
+                }
+            }
+        };
+    }
+    assertNotDestroyed() {
+        _assert(!this.destroyed, this.auth, "internal-error" /* AuthErrorCode.INTERNAL_ERROR */);
+    }
+    async makeRenderPromise() {
+        await this.init();
+        if (!this.widgetId) {
+            let container = this.container;
+            if (!this.isInvisible) {
+                const guaranteedEmpty = document.createElement('div');
+                container.appendChild(guaranteedEmpty);
+                container = guaranteedEmpty;
+            }
+            this.widgetId = this.getAssertedRecaptcha().render(container, this.parameters);
+        }
+        return this.widgetId;
+    }
+    async init() {
+        _assert(_isHttpOrHttps() && !_isWorker(), this.auth, "internal-error" /* AuthErrorCode.INTERNAL_ERROR */);
+        await domReady();
+        this.recaptcha = await this._recaptchaLoader.load(this.auth, this.auth.languageCode || undefined);
+        const siteKey = await getRecaptchaParams(this.auth);
+        _assert(siteKey, this.auth, "internal-error" /* AuthErrorCode.INTERNAL_ERROR */);
+        this.parameters.sitekey = siteKey;
+    }
+    getAssertedRecaptcha() {
+        _assert(this.recaptcha, this.auth, "internal-error" /* AuthErrorCode.INTERNAL_ERROR */);
+        return this.recaptcha;
+    }
+}
+function domReady() {
+    let resolver = null;
+    return new Promise(resolve => {
+        if (document.readyState === 'complete') {
+            resolve();
+            return;
+        }
+        // Document not ready, wait for load before resolving.
+        // Save resolver, so we can remove listener in case it was externally
+        // cancelled.
+        resolver = () => resolve();
+        window.addEventListener('load', resolver);
+    }).catch(e => {
+        if (resolver) {
+            window.removeEventListener('load', resolver);
+        }
+        throw e;
+    });
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+class ConfirmationResultImpl {
+    constructor(verificationId, onConfirmation) {
+        this.verificationId = verificationId;
+        this.onConfirmation = onConfirmation;
+    }
+    confirm(verificationCode) {
+        const authCredential = PhoneAuthCredential._fromVerification(this.verificationId, verificationCode);
+        return this.onConfirmation(authCredential);
+    }
+}
+/**
+ * Asynchronously signs in using a phone number.
+ *
+ * @remarks
+ * This method sends a code via SMS to the given
+ * phone number, and returns a {@link ConfirmationResult}. After the user
+ * provides the code sent to their phone, call {@link ConfirmationResult.confirm}
+ * with the code to sign the user in.
+ *
+ * For abuse prevention, this method also requires a {@link ApplicationVerifier}.
+ * This SDK includes a reCAPTCHA-based implementation, {@link RecaptchaVerifier}.
+ * This function can work on other platforms that do not support the
+ * {@link RecaptchaVerifier} (like React Native), but you need to use a
+ * third-party {@link ApplicationVerifier} implementation.
+ *
+ * @example
+ * ```javascript
+ * // 'recaptcha-container' is the ID of an element in the DOM.
+ * const applicationVerifier = new firebase.auth.RecaptchaVerifier('recaptcha-container');
+ * const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, applicationVerifier);
+ * // Obtain a verificationCode from the user.
+ * const credential = await confirmationResult.confirm(verificationCode);
+ * ```
+ *
+ * @param auth - The {@link Auth} instance.
+ * @param phoneNumber - The user's phone number in E.164 format (e.g. +16505550101).
+ * @param appVerifier - The {@link ApplicationVerifier}.
+ *
+ * @public
+ */
+async function signInWithPhoneNumber(auth, phoneNumber, appVerifier) {
+    const authInternal = _castAuth(auth);
+    const verificationId = await _verifyPhoneNumber(authInternal, phoneNumber, getModularInstance(appVerifier));
+    return new ConfirmationResultImpl(verificationId, cred => signInWithCredential(authInternal, cred));
+}
+/**
+ * Links the user account with the given phone number.
+ *
+ * @param user - The user.
+ * @param phoneNumber - The user's phone number in E.164 format (e.g. +16505550101).
+ * @param appVerifier - The {@link ApplicationVerifier}.
+ *
+ * @public
+ */
+async function linkWithPhoneNumber(user, phoneNumber, appVerifier) {
+    const userInternal = getModularInstance(user);
+    await _assertLinkedStatus(false, userInternal, "phone" /* ProviderId.PHONE */);
+    const verificationId = await _verifyPhoneNumber(userInternal.auth, phoneNumber, getModularInstance(appVerifier));
+    return new ConfirmationResultImpl(verificationId, cred => linkWithCredential(userInternal, cred));
+}
+/**
+ * Re-authenticates a user using a fresh phone credential.
+ *
+ * @remarks Use before operations such as {@link updatePassword} that require tokens from recent sign-in attempts.
+ *
+ * @param user - The user.
+ * @param phoneNumber - The user's phone number in E.164 format (e.g. +16505550101).
+ * @param appVerifier - The {@link ApplicationVerifier}.
+ *
+ * @public
+ */
+async function reauthenticateWithPhoneNumber(user, phoneNumber, appVerifier) {
+    const userInternal = getModularInstance(user);
+    const verificationId = await _verifyPhoneNumber(userInternal.auth, phoneNumber, getModularInstance(appVerifier));
+    return new ConfirmationResultImpl(verificationId, cred => reauthenticateWithCredential(userInternal, cred));
+}
+/**
+ * Returns a verification ID to be used in conjunction with the SMS code that is sent.
+ *
+ */
+async function _verifyPhoneNumber(auth, options, verifier) {
+    var _a;
+    const recaptchaToken = await verifier.verify();
+    try {
+        _assert(typeof recaptchaToken === 'string', auth, "argument-error" /* AuthErrorCode.ARGUMENT_ERROR */);
+        _assert(verifier.type === RECAPTCHA_VERIFIER_TYPE, auth, "argument-error" /* AuthErrorCode.ARGUMENT_ERROR */);
+        let phoneInfoOptions;
+        if (typeof options === 'string') {
+            phoneInfoOptions = {
+                phoneNumber: options
+            };
+        }
+        else {
+            phoneInfoOptions = options;
+        }
+        if ('session' in phoneInfoOptions) {
+            const session = phoneInfoOptions.session;
+            if ('phoneNumber' in phoneInfoOptions) {
+                _assert(session.type === "enroll" /* MultiFactorSessionType.ENROLL */, auth, "internal-error" /* AuthErrorCode.INTERNAL_ERROR */);
+                const response = await startEnrollPhoneMfa(auth, {
+                    idToken: session.credential,
+                    phoneEnrollmentInfo: {
+                        phoneNumber: phoneInfoOptions.phoneNumber,
+                        recaptchaToken
+                    }
+                });
+                return response.phoneSessionInfo.sessionInfo;
+            }
+            else {
+                _assert(session.type === "signin" /* MultiFactorSessionType.SIGN_IN */, auth, "internal-error" /* AuthErrorCode.INTERNAL_ERROR */);
+                const mfaEnrollmentId = ((_a = phoneInfoOptions.multiFactorHint) === null || _a === void 0 ? void 0 : _a.uid) ||
+                    phoneInfoOptions.multiFactorUid;
+                _assert(mfaEnrollmentId, auth, "missing-multi-factor-info" /* AuthErrorCode.MISSING_MFA_INFO */);
+                const response = await startSignInPhoneMfa(auth, {
+                    mfaPendingCredential: session.credential,
+                    mfaEnrollmentId,
+                    phoneSignInInfo: {
+                        recaptchaToken
+                    }
+                });
+                return response.phoneResponseInfo.sessionInfo;
+            }
+        }
+        else {
+            const { sessionInfo } = await sendPhoneVerificationCode(auth, {
+                phoneNumber: phoneInfoOptions.phoneNumber,
+                recaptchaToken
+            });
+            return sessionInfo;
+        }
+    }
+    finally {
+        verifier._reset();
+    }
+}
+/**
+ * Updates the user's phone number.
+ *
+ * @example
+ * ```
+ * // 'recaptcha-container' is the ID of an element in the DOM.
+ * const applicationVerifier = new RecaptchaVerifier('recaptcha-container');
+ * const provider = new PhoneAuthProvider(auth);
+ * const verificationId = await provider.verifyPhoneNumber('+16505550101', applicationVerifier);
+ * // Obtain the verificationCode from the user.
+ * const phoneCredential = PhoneAuthProvider.credential(verificationId, verificationCode);
+ * await updatePhoneNumber(user, phoneCredential);
+ * ```
+ *
+ * @param user - The user.
+ * @param credential - A credential authenticating the new phone number.
+ *
+ * @public
+ */
+async function updatePhoneNumber(user, credential) {
+    await _link$1(getModularInstance(user), credential);
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Provider for generating an {@link PhoneAuthCredential}.
+ *
+ * @example
+ * ```javascript
+ * // 'recaptcha-container' is the ID of an element in the DOM.
+ * const applicationVerifier = new RecaptchaVerifier('recaptcha-container');
+ * const provider = new PhoneAuthProvider(auth);
+ * const verificationId = await provider.verifyPhoneNumber('+16505550101', applicationVerifier);
+ * // Obtain the verificationCode from the user.
+ * const phoneCredential = PhoneAuthProvider.credential(verificationId, verificationCode);
+ * const userCredential = await signInWithCredential(auth, phoneCredential);
+ * ```
+ *
+ * @public
+ */
+class PhoneAuthProvider {
+    /**
+     * @param auth - The Firebase {@link Auth} instance in which sign-ins should occur.
+     *
+     */
+    constructor(auth) {
+        /** Always set to {@link ProviderId}.PHONE. */
+        this.providerId = PhoneAuthProvider.PROVIDER_ID;
+        this.auth = _castAuth(auth);
+    }
+    /**
+     *
+     * Starts a phone number authentication flow by sending a verification code to the given phone
+     * number.
+     *
+     * @example
+     * ```javascript
+     * const provider = new PhoneAuthProvider(auth);
+     * const verificationId = await provider.verifyPhoneNumber(phoneNumber, applicationVerifier);
+     * // Obtain verificationCode from the user.
+     * const authCredential = PhoneAuthProvider.credential(verificationId, verificationCode);
+     * const userCredential = await signInWithCredential(auth, authCredential);
+     * ```
+     *
+     * @example
+     * An alternative flow is provided using the `signInWithPhoneNumber` method.
+     * ```javascript
+     * const confirmationResult = signInWithPhoneNumber(auth, phoneNumber, applicationVerifier);
+     * // Obtain verificationCode from the user.
+     * const userCredential = confirmationResult.confirm(verificationCode);
+     * ```
+     *
+     * @param phoneInfoOptions - The user's {@link PhoneInfoOptions}. The phone number should be in
+     * E.164 format (e.g. +16505550101).
+     * @param applicationVerifier - For abuse prevention, this method also requires a
+     * {@link ApplicationVerifier}. This SDK includes a reCAPTCHA-based implementation,
+     * {@link RecaptchaVerifier}.
+     *
+     * @returns A Promise for a verification ID that can be passed to
+     * {@link PhoneAuthProvider.credential} to identify this flow..
+     */
+    verifyPhoneNumber(phoneOptions, applicationVerifier) {
+        return _verifyPhoneNumber(this.auth, phoneOptions, getModularInstance(applicationVerifier));
+    }
+    /**
+     * Creates a phone auth credential, given the verification ID from
+     * {@link PhoneAuthProvider.verifyPhoneNumber} and the code that was sent to the user's
+     * mobile device.
+     *
+     * @example
+     * ```javascript
+     * const provider = new PhoneAuthProvider(auth);
+     * const verificationId = provider.verifyPhoneNumber(phoneNumber, applicationVerifier);
+     * // Obtain verificationCode from the user.
+     * const authCredential = PhoneAuthProvider.credential(verificationId, verificationCode);
+     * const userCredential = signInWithCredential(auth, authCredential);
+     * ```
+     *
+     * @example
+     * An alternative flow is provided using the `signInWithPhoneNumber` method.
+     * ```javascript
+     * const confirmationResult = await signInWithPhoneNumber(auth, phoneNumber, applicationVerifier);
+     * // Obtain verificationCode from the user.
+     * const userCredential = await confirmationResult.confirm(verificationCode);
+     * ```
+     *
+     * @param verificationId - The verification ID returned from {@link PhoneAuthProvider.verifyPhoneNumber}.
+     * @param verificationCode - The verification code sent to the user's mobile device.
+     *
+     * @returns The auth provider credential.
+     */
+    static credential(verificationId, verificationCode) {
+        return PhoneAuthCredential._fromVerification(verificationId, verificationCode);
+    }
+    /**
+     * Generates an {@link AuthCredential} from a {@link UserCredential}.
+     * @param userCredential - The user credential.
+     */
+    static credentialFromResult(userCredential) {
+        const credential = userCredential;
+        return PhoneAuthProvider.credentialFromTaggedObject(credential);
+    }
+    /**
+     * Returns an {@link AuthCredential} when passed an error.
+     *
+     * @remarks
+     *
+     * This method works for errors like
+     * `auth/account-exists-with-different-credentials`. This is useful for
+     * recovering when attempting to set a user's phone number but the number
+     * in question is already tied to another account. For example, the following
+     * code tries to update the current user's phone number, and if that
+     * fails, links the user with the account associated with that number:
+     *
+     * ```js
+     * const provider = new PhoneAuthProvider(auth);
+     * const verificationId = await provider.verifyPhoneNumber(number, verifier);
+     * try {
+     *   const code = ''; // Prompt the user for the verification code
+     *   await updatePhoneNumber(
+     *       auth.currentUser,
+     *       PhoneAuthProvider.credential(verificationId, code));
+     * } catch (e) {
+     *   if ((e as FirebaseError)?.code === 'auth/account-exists-with-different-credential') {
+     *     const cred = PhoneAuthProvider.credentialFromError(e);
+     *     await linkWithCredential(auth.currentUser, cred);
+     *   }
+     * }
+     *
+     * // At this point, auth.currentUser.phoneNumber === number.
+     * ```
+     *
+     * @param error - The error to generate a credential from.
+     */
+    static credentialFromError(error) {
+        return PhoneAuthProvider.credentialFromTaggedObject((error.customData || {}));
+    }
+    static credentialFromTaggedObject({ _tokenResponse: tokenResponse }) {
+        if (!tokenResponse) {
+            return null;
+        }
+        const { phoneNumber, temporaryProof } = tokenResponse;
+        if (phoneNumber && temporaryProof) {
+            return PhoneAuthCredential._fromTokenResponse(phoneNumber, temporaryProof);
+        }
+        return null;
+    }
+}
+/** Always set to {@link ProviderId}.PHONE. */
+PhoneAuthProvider.PROVIDER_ID = "phone" /* ProviderId.PHONE */;
+/** Always set to {@link SignInMethod}.PHONE. */
+PhoneAuthProvider.PHONE_SIGN_IN_METHOD = "phone" /* SignInMethod.PHONE */;
 
 /**
  * @license
@@ -7564,6 +12289,105 @@ class AbstractPopupRedirectOperation {
  */
 const _POLL_WINDOW_CLOSE_TIMEOUT = new Delay(2000, 10000);
 /**
+ * Authenticates a Firebase client using a popup-based OAuth authentication flow.
+ *
+ * @remarks
+ * If succeeds, returns the signed in user along with the provider's credential. If sign in was
+ * unsuccessful, returns an error object containing additional information about the error.
+ *
+ * @example
+ * ```javascript
+ * // Sign in using a popup.
+ * const provider = new FacebookAuthProvider();
+ * const result = await signInWithPopup(auth, provider);
+ *
+ * // The signed-in user info.
+ * const user = result.user;
+ * // This gives you a Facebook Access Token.
+ * const credential = provider.credentialFromResult(auth, result);
+ * const token = credential.accessToken;
+ * ```
+ *
+ * @param auth - The {@link Auth} instance.
+ * @param provider - The provider to authenticate. The provider has to be an {@link OAuthProvider}.
+ * Non-OAuth providers like {@link EmailAuthProvider} will throw an error.
+ * @param resolver - An instance of {@link PopupRedirectResolver}, optional
+ * if already supplied to {@link initializeAuth} or provided by {@link getAuth}.
+ *
+ *
+ * @public
+ */
+async function signInWithPopup(auth, provider, resolver) {
+    const authInternal = _castAuth(auth);
+    _assertInstanceOf(auth, provider, FederatedAuthProvider);
+    const resolverInternal = _withDefaultResolver(authInternal, resolver);
+    const action = new PopupOperation(authInternal, "signInViaPopup" /* AuthEventType.SIGN_IN_VIA_POPUP */, provider, resolverInternal);
+    return action.executeNotNull();
+}
+/**
+ * Reauthenticates the current user with the specified {@link OAuthProvider} using a pop-up based
+ * OAuth flow.
+ *
+ * @remarks
+ * If the reauthentication is successful, the returned result will contain the user and the
+ * provider's credential.
+ *
+ * @example
+ * ```javascript
+ * // Sign in using a popup.
+ * const provider = new FacebookAuthProvider();
+ * const result = await signInWithPopup(auth, provider);
+ * // Reauthenticate using a popup.
+ * await reauthenticateWithPopup(result.user, provider);
+ * ```
+ *
+ * @param user - The user.
+ * @param provider - The provider to authenticate. The provider has to be an {@link OAuthProvider}.
+ * Non-OAuth providers like {@link EmailAuthProvider} will throw an error.
+ * @param resolver - An instance of {@link PopupRedirectResolver}, optional
+ * if already supplied to {@link initializeAuth} or provided by {@link getAuth}.
+ *
+ * @public
+ */
+async function reauthenticateWithPopup(user, provider, resolver) {
+    const userInternal = getModularInstance(user);
+    _assertInstanceOf(userInternal.auth, provider, FederatedAuthProvider);
+    const resolverInternal = _withDefaultResolver(userInternal.auth, resolver);
+    const action = new PopupOperation(userInternal.auth, "reauthViaPopup" /* AuthEventType.REAUTH_VIA_POPUP */, provider, resolverInternal, userInternal);
+    return action.executeNotNull();
+}
+/**
+ * Links the authenticated provider to the user account using a pop-up based OAuth flow.
+ *
+ * @remarks
+ * If the linking is successful, the returned result will contain the user and the provider's credential.
+ *
+ *
+ * @example
+ * ```javascript
+ * // Sign in using some other provider.
+ * const result = await signInWithEmailAndPassword(auth, email, password);
+ * // Link using a popup.
+ * const provider = new FacebookAuthProvider();
+ * await linkWithPopup(result.user, provider);
+ * ```
+ *
+ * @param user - The user.
+ * @param provider - The provider to authenticate. The provider has to be an {@link OAuthProvider}.
+ * Non-OAuth providers like {@link EmailAuthProvider} will throw an error.
+ * @param resolver - An instance of {@link PopupRedirectResolver}, optional
+ * if already supplied to {@link initializeAuth} or provided by {@link getAuth}.
+ *
+ * @public
+ */
+async function linkWithPopup(user, provider, resolver) {
+    const userInternal = getModularInstance(user);
+    _assertInstanceOf(userInternal.auth, provider, FederatedAuthProvider);
+    const resolverInternal = _withDefaultResolver(userInternal.auth, resolver);
+    const action = new PopupOperation(userInternal.auth, "linkViaPopup" /* AuthEventType.LINK_VIA_POPUP */, provider, resolverInternal, userInternal);
+    return action.executeNotNull();
+}
+/**
  * Popup event manager. Handles the popup's entire lifecycle; listens to auth
  * events
  *
@@ -7735,6 +12559,12 @@ async function _getAndClearPendingRedirectStatus(resolver, auth) {
     await persistence._remove(key);
     return hasPendingRedirect;
 }
+async function _setPendingRedirectStatus(resolver, auth) {
+    return resolverPersistence(resolver)._set(pendingRedirectKey(auth), 'true');
+}
+function _clearRedirectOutcomes() {
+    redirectOutcomeMap.clear();
+}
 function _overrideRedirectResult(auth, result) {
     redirectOutcomeMap.set(auth._key(), result);
 }
@@ -7743,6 +12573,214 @@ function resolverPersistence(resolver) {
 }
 function pendingRedirectKey(auth) {
     return _persistenceKeyName(PENDING_REDIRECT_KEY, auth.config.apiKey, auth.name);
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Authenticates a Firebase client using a full-page redirect flow.
+ *
+ * @remarks
+ * To handle the results and errors for this operation, refer to {@link getRedirectResult}.
+ * Follow the {@link https://firebase.google.com/docs/auth/web/redirect-best-practices
+ * | best practices} when using {@link signInWithRedirect}.
+ *
+ * @example
+ * ```javascript
+ * // Sign in using a redirect.
+ * const provider = new FacebookAuthProvider();
+ * // You can add additional scopes to the provider:
+ * provider.addScope('user_birthday');
+ * // Start a sign in process for an unauthenticated user.
+ * await signInWithRedirect(auth, provider);
+ * // This will trigger a full page redirect away from your app
+ *
+ * // After returning from the redirect when your app initializes you can obtain the result
+ * const result = await getRedirectResult(auth);
+ * if (result) {
+ *   // This is the signed-in user
+ *   const user = result.user;
+ *   // This gives you a Facebook Access Token.
+ *   const credential = provider.credentialFromResult(auth, result);
+ *   const token = credential.accessToken;
+ * }
+ * // As this API can be used for sign-in, linking and reauthentication,
+ * // check the operationType to determine what triggered this redirect
+ * // operation.
+ * const operationType = result.operationType;
+ * ```
+ *
+ * @param auth - The {@link Auth} instance.
+ * @param provider - The provider to authenticate. The provider has to be an {@link OAuthProvider}.
+ * Non-OAuth providers like {@link EmailAuthProvider} will throw an error.
+ * @param resolver - An instance of {@link PopupRedirectResolver}, optional
+ * if already supplied to {@link initializeAuth} or provided by {@link getAuth}.
+ *
+ * @public
+ */
+function signInWithRedirect(auth, provider, resolver) {
+    return _signInWithRedirect(auth, provider, resolver);
+}
+async function _signInWithRedirect(auth, provider, resolver) {
+    const authInternal = _castAuth(auth);
+    _assertInstanceOf(auth, provider, FederatedAuthProvider);
+    // Wait for auth initialization to complete, this will process pending redirects and clear the
+    // PENDING_REDIRECT_KEY in persistence. This should be completed before starting a new
+    // redirect and creating a PENDING_REDIRECT_KEY entry.
+    await authInternal._initializationPromise;
+    const resolverInternal = _withDefaultResolver(authInternal, resolver);
+    await _setPendingRedirectStatus(resolverInternal, authInternal);
+    return resolverInternal._openRedirect(authInternal, provider, "signInViaRedirect" /* AuthEventType.SIGN_IN_VIA_REDIRECT */);
+}
+/**
+ * Reauthenticates the current user with the specified {@link OAuthProvider} using a full-page redirect flow.
+ * @remarks
+ * To handle the results and errors for this operation, refer to {@link getRedirectResult}.
+ * Follow the {@link https://firebase.google.com/docs/auth/web/redirect-best-practices
+ * | best practices} when using {@link reauthenticateWithRedirect}.
+ *
+ * @example
+ * ```javascript
+ * // Sign in using a redirect.
+ * const provider = new FacebookAuthProvider();
+ * const result = await signInWithRedirect(auth, provider);
+ * // This will trigger a full page redirect away from your app
+ *
+ * // After returning from the redirect when your app initializes you can obtain the result
+ * const result = await getRedirectResult(auth);
+ * // Reauthenticate using a redirect.
+ * await reauthenticateWithRedirect(result.user, provider);
+ * // This will again trigger a full page redirect away from your app
+ *
+ * // After returning from the redirect when your app initializes you can obtain the result
+ * const result = await getRedirectResult(auth);
+ * ```
+ *
+ * @param user - The user.
+ * @param provider - The provider to authenticate. The provider has to be an {@link OAuthProvider}.
+ * Non-OAuth providers like {@link EmailAuthProvider} will throw an error.
+ * @param resolver - An instance of {@link PopupRedirectResolver}, optional
+ * if already supplied to {@link initializeAuth} or provided by {@link getAuth}.
+ *
+ * @public
+ */
+function reauthenticateWithRedirect(user, provider, resolver) {
+    return _reauthenticateWithRedirect(user, provider, resolver);
+}
+async function _reauthenticateWithRedirect(user, provider, resolver) {
+    const userInternal = getModularInstance(user);
+    _assertInstanceOf(userInternal.auth, provider, FederatedAuthProvider);
+    // Wait for auth initialization to complete, this will process pending redirects and clear the
+    // PENDING_REDIRECT_KEY in persistence. This should be completed before starting a new
+    // redirect and creating a PENDING_REDIRECT_KEY entry.
+    await userInternal.auth._initializationPromise;
+    // Allow the resolver to error before persisting the redirect user
+    const resolverInternal = _withDefaultResolver(userInternal.auth, resolver);
+    await _setPendingRedirectStatus(resolverInternal, userInternal.auth);
+    const eventId = await prepareUserForRedirect(userInternal);
+    return resolverInternal._openRedirect(userInternal.auth, provider, "reauthViaRedirect" /* AuthEventType.REAUTH_VIA_REDIRECT */, eventId);
+}
+/**
+ * Links the {@link OAuthProvider} to the user account using a full-page redirect flow.
+ * @remarks
+ * To handle the results and errors for this operation, refer to {@link getRedirectResult}.
+ * Follow the {@link https://firebase.google.com/docs/auth/web/redirect-best-practices
+ * | best practices} when using {@link linkWithRedirect}.
+ *
+ * @example
+ * ```javascript
+ * // Sign in using some other provider.
+ * const result = await signInWithEmailAndPassword(auth, email, password);
+ * // Link using a redirect.
+ * const provider = new FacebookAuthProvider();
+ * await linkWithRedirect(result.user, provider);
+ * // This will trigger a full page redirect away from your app
+ *
+ * // After returning from the redirect when your app initializes you can obtain the result
+ * const result = await getRedirectResult(auth);
+ * ```
+ *
+ * @param user - The user.
+ * @param provider - The provider to authenticate. The provider has to be an {@link OAuthProvider}.
+ * Non-OAuth providers like {@link EmailAuthProvider} will throw an error.
+ * @param resolver - An instance of {@link PopupRedirectResolver}, optional
+ * if already supplied to {@link initializeAuth} or provided by {@link getAuth}.
+ *
+ *
+ * @public
+ */
+function linkWithRedirect(user, provider, resolver) {
+    return _linkWithRedirect(user, provider, resolver);
+}
+async function _linkWithRedirect(user, provider, resolver) {
+    const userInternal = getModularInstance(user);
+    _assertInstanceOf(userInternal.auth, provider, FederatedAuthProvider);
+    // Wait for auth initialization to complete, this will process pending redirects and clear the
+    // PENDING_REDIRECT_KEY in persistence. This should be completed before starting a new
+    // redirect and creating a PENDING_REDIRECT_KEY entry.
+    await userInternal.auth._initializationPromise;
+    // Allow the resolver to error before persisting the redirect user
+    const resolverInternal = _withDefaultResolver(userInternal.auth, resolver);
+    await _assertLinkedStatus(false, userInternal, provider.providerId);
+    await _setPendingRedirectStatus(resolverInternal, userInternal.auth);
+    const eventId = await prepareUserForRedirect(userInternal);
+    return resolverInternal._openRedirect(userInternal.auth, provider, "linkViaRedirect" /* AuthEventType.LINK_VIA_REDIRECT */, eventId);
+}
+/**
+ * Returns a {@link UserCredential} from the redirect-based sign-in flow.
+ *
+ * @remarks
+ * If sign-in succeeded, returns the signed in user. If sign-in was unsuccessful, fails with an
+ * error. If no redirect operation was called, returns `null`.
+ *
+ * @example
+ * ```javascript
+ * // Sign in using a redirect.
+ * const provider = new FacebookAuthProvider();
+ * // You can add additional scopes to the provider:
+ * provider.addScope('user_birthday');
+ * // Start a sign in process for an unauthenticated user.
+ * await signInWithRedirect(auth, provider);
+ * // This will trigger a full page redirect away from your app
+ *
+ * // After returning from the redirect when your app initializes you can obtain the result
+ * const result = await getRedirectResult(auth);
+ * if (result) {
+ *   // This is the signed-in user
+ *   const user = result.user;
+ *   // This gives you a Facebook Access Token.
+ *   const credential = provider.credentialFromResult(auth, result);
+ *   const token = credential.accessToken;
+ * }
+ * // As this API can be used for sign-in, linking and reauthentication,
+ * // check the operationType to determine what triggered this redirect
+ * // operation.
+ * const operationType = result.operationType;
+ * ```
+ *
+ * @param auth - The {@link Auth} instance.
+ * @param resolver - An instance of {@link PopupRedirectResolver}, optional
+ * if already supplied to {@link initializeAuth} or provided by {@link getAuth}.
+ *
+ * @public
+ */
+async function getRedirectResult(auth, resolver) {
+    await _castAuth(auth)._initializationPromise;
+    return _getRedirectResult(auth, resolver, false);
 }
 async function _getRedirectResult(auth, resolverExtern, bypassAuthState = false) {
     const authInternal = _castAuth(auth);
@@ -7755,6 +12793,13 @@ async function _getRedirectResult(auth, resolverExtern, bypassAuthState = false)
         await authInternal._setRedirectUser(null, resolverExtern);
     }
     return result;
+}
+async function prepareUserForRedirect(user) {
+    const eventId = _generateEventId(`${user.uid}:::`);
+    user._redirectEventId = eventId;
+    await user.auth._setRedirectUser(user);
+    await user.auth._persistUserIfCurrent(user);
+    return eventId;
 }
 
 /**
@@ -8429,6 +13474,75 @@ class BrowserPopupRedirectResolver {
  */
 const browserPopupRedirectResolver = BrowserPopupRedirectResolver;
 
+class MultiFactorAssertionImpl {
+    constructor(factorId) {
+        this.factorId = factorId;
+    }
+    _process(auth, session, displayName) {
+        switch (session.type) {
+            case "enroll" /* MultiFactorSessionType.ENROLL */:
+                return this._finalizeEnroll(auth, session.credential, displayName);
+            case "signin" /* MultiFactorSessionType.SIGN_IN */:
+                return this._finalizeSignIn(auth, session.credential);
+            default:
+                return debugFail('unexpected MultiFactorSessionType');
+        }
+    }
+}
+
+/**
+ * {@inheritdoc PhoneMultiFactorAssertion}
+ *
+ * @public
+ */
+class PhoneMultiFactorAssertionImpl extends MultiFactorAssertionImpl {
+    constructor(credential) {
+        super("phone" /* FactorId.PHONE */);
+        this.credential = credential;
+    }
+    /** @internal */
+    static _fromCredential(credential) {
+        return new PhoneMultiFactorAssertionImpl(credential);
+    }
+    /** @internal */
+    _finalizeEnroll(auth, idToken, displayName) {
+        return finalizeEnrollPhoneMfa(auth, {
+            idToken,
+            displayName,
+            phoneVerificationInfo: this.credential._makeVerificationRequest()
+        });
+    }
+    /** @internal */
+    _finalizeSignIn(auth, mfaPendingCredential) {
+        return finalizeSignInPhoneMfa(auth, {
+            mfaPendingCredential,
+            phoneVerificationInfo: this.credential._makeVerificationRequest()
+        });
+    }
+}
+/**
+ * Provider for generating a {@link PhoneMultiFactorAssertion}.
+ *
+ * @public
+ */
+class PhoneMultiFactorGenerator {
+    constructor() { }
+    /**
+     * Provides a {@link PhoneMultiFactorAssertion} to confirm ownership of the phone second factor.
+     *
+     * @param phoneAuthCredential - A credential provided by {@link PhoneAuthProvider.credential}.
+     * @returns A {@link PhoneMultiFactorAssertion} which can be used with
+     * {@link MultiFactorResolver.resolveSignIn}
+     */
+    static assertion(credential) {
+        return PhoneMultiFactorAssertionImpl._fromCredential(credential);
+    }
+}
+/**
+ * The identifier of the phone second factor: `phone`.
+ */
+PhoneMultiFactorGenerator.FACTOR_ID = 'phone';
+
 var name = "@firebase/auth";
 var version = "0.21.4";
 
@@ -8657,57 +13771,59 @@ registerAuth("Browser" /* ClientPlatform.BROWSER */);
 
 var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
 
+var esm = {};
+
 /*
 
  Copyright The Closure Library Authors.
  SPDX-License-Identifier: Apache-2.0
 */
 
-var k$2,goog=goog||{},l$1=commonjsGlobal||self;function aa(){}function ba(a){var b=typeof a;b="object"!=b?b:a?Array.isArray(a)?"array":b:"null";return "array"==b||"object"==b&&"number"==typeof a.length}function p$1(a){var b=typeof a;return "object"==b&&null!=a||"function"==b}function ca(a){return Object.prototype.hasOwnProperty.call(a,da)&&a[da]||(a[da]=++ea)}var da="closure_uid_"+(1E9*Math.random()>>>0),ea=0;function fa$1(a,b,c){return a.call.apply(a.bind,arguments)}
+var k$2,goog=goog||{},l$1=commonjsGlobal||self;function aa$1(){}function ba$1(a){var b=typeof a;b="object"!=b?b:a?Array.isArray(a)?"array":b:"null";return "array"==b||"object"==b&&"number"==typeof a.length}function p$1(a){var b=typeof a;return "object"==b&&null!=a||"function"==b}function ca$1(a){return Object.prototype.hasOwnProperty.call(a,da$1)&&a[da$1]||(a[da$1]=++ea$1)}var da$1="closure_uid_"+(1E9*Math.random()>>>0),ea$1=0;function fa$1(a,b,c){return a.call.apply(a.bind,arguments)}
 function ha$1(a,b,c){if(!a)throw Error();if(2<arguments.length){var d=Array.prototype.slice.call(arguments,2);return function(){var e=Array.prototype.slice.call(arguments);Array.prototype.unshift.apply(e,d);return a.apply(b,e)}}return function(){return a.apply(b,arguments)}}function q$1(a,b,c){Function.prototype.bind&&-1!=Function.prototype.bind.toString().indexOf("native code")?q$1=fa$1:q$1=ha$1;return q$1.apply(null,arguments)}
-function ia$1(a,b){var c=Array.prototype.slice.call(arguments,1);return function(){var d=c.slice();d.push.apply(d,arguments);return a.apply(this,d)}}function t$1(a,b){function c(){}c.prototype=b.prototype;a.X=b.prototype;a.prototype=new c;a.prototype.constructor=a;a.Wb=function(d,e,f){for(var h=Array(arguments.length-2),n=2;n<arguments.length;n++)h[n-2]=arguments[n];return b.prototype[e].apply(d,h)};}function v$2(){this.s=this.s;this.o=this.o;}var ja$1=0;v$2.prototype.s=!1;v$2.prototype.na=function(){if(!this.s&&(this.s=!0,this.M(),0!=ja$1)){ca(this);}};v$2.prototype.M=function(){if(this.o)for(;this.o.length;)this.o.shift()();};const la=Array.prototype.indexOf?function(a,b){return Array.prototype.indexOf.call(a,b,void 0)}:function(a,b){if("string"===typeof a)return "string"!==typeof b||1!=b.length?-1:a.indexOf(b,0);for(let c=0;c<a.length;c++)if(c in a&&a[c]===b)return c;return -1};function ma$1(a){const b=a.length;if(0<b){const c=Array(b);for(let d=0;d<b;d++)c[d]=a[d];return c}return []}
-function na(a,b){for(let c=1;c<arguments.length;c++){const d=arguments[c];if(ba(d)){const e=a.length||0,f=d.length||0;a.length=e+f;for(let h=0;h<f;h++)a[e+h]=d[h];}else a.push(d);}}function w(a,b){this.type=a;this.g=this.target=b;this.defaultPrevented=!1;}w.prototype.h=function(){this.defaultPrevented=!0;};var oa=function(){if(!l$1.addEventListener||!Object.defineProperty)return !1;var a=!1,b=Object.defineProperty({},"passive",{get:function(){a=!0;}});try{l$1.addEventListener("test",aa,b),l$1.removeEventListener("test",aa,b);}catch(c){}return a}();function pa$1(a){return /^[\s\xa0]*$/.test(a)}var qa$1=String.prototype.trim?function(a){return a.trim()}:function(a){return /^[\s\xa0]*([\s\S]*?)[\s\xa0]*$/.exec(a)[1]};function ra$1(a,b){return a<b?-1:a>b?1:0}function sa(){var a=l$1.navigator;return a&&(a=a.userAgent)?a:""}function x$2(a){return -1!=sa().indexOf(a)}function ta(a){ta[" "](a);return a}ta[" "]=aa;function ua$1(a){var b=va$1;return Object.prototype.hasOwnProperty.call(b,9)?b[9]:b[9]=a(9)}var wa=x$2("Opera"),y$1=x$2("Trident")||x$2("MSIE"),xa$1=x$2("Edge"),ya$1=xa$1||y$1,za$1=x$2("Gecko")&&!(-1!=sa().toLowerCase().indexOf("webkit")&&!x$2("Edge"))&&!(x$2("Trident")||x$2("MSIE"))&&!x$2("Edge"),Aa=-1!=sa().toLowerCase().indexOf("webkit")&&!x$2("Edge");function Ba$1(){var a=l$1.document;return a?a.documentMode:void 0}var Ea;
-a:{var Fa$1="",Ga$1=function(){var a=sa();if(za$1)return /rv:([^\);]+)(\)|;)/.exec(a);if(xa$1)return /Edge\/([\d\.]+)/.exec(a);if(y$1)return /\b(?:MSIE|rv)[: ]([^\);]+)(\)|;)/.exec(a);if(Aa)return /WebKit\/(\S+)/.exec(a);if(wa)return /(?:Version)[ \/]?(\S+)/.exec(a)}();Ga$1&&(Fa$1=Ga$1?Ga$1[1]:"");if(y$1){var Ha$1=Ba$1();if(null!=Ha$1&&Ha$1>parseFloat(Fa$1)){Ea=String(Ha$1);break a}}Ea=Fa$1;}var va$1={};
-function Ia$1(){return ua$1(function(){let a=0;const b=qa$1(String(Ea)).split("."),c=qa$1("9").split("."),d=Math.max(b.length,c.length);for(let h=0;0==a&&h<d;h++){var e=b[h]||"",f=c[h]||"";do{e=/(\d*)(\D*)(.*)/.exec(e)||["","","",""];f=/(\d*)(\D*)(.*)/.exec(f)||["","","",""];if(0==e[0].length&&0==f[0].length)break;a=ra$1(0==e[1].length?0:parseInt(e[1],10),0==f[1].length?0:parseInt(f[1],10))||ra$1(0==e[2].length,0==f[2].length)||ra$1(e[2],f[2]);e=e[3];f=f[3];}while(0==a)}return 0<=a})}var Ja$1;
-if(l$1.document&&y$1){var Ka=Ba$1();Ja$1=Ka?Ka:parseInt(Ea,10)||void 0;}else Ja$1=void 0;var La$1=Ja$1;function z$2(a,b){w.call(this,a?a.type:"");this.relatedTarget=this.g=this.target=null;this.button=this.screenY=this.screenX=this.clientY=this.clientX=0;this.key="";this.metaKey=this.shiftKey=this.altKey=this.ctrlKey=!1;this.state=null;this.pointerId=0;this.pointerType="";this.i=null;if(a){var c=this.type=a.type,d=a.changedTouches&&a.changedTouches.length?a.changedTouches[0]:null;this.target=a.target||a.srcElement;this.g=b;if(b=a.relatedTarget){if(za$1){a:{try{ta(b.nodeName);var e=!0;break a}catch(f){}e=
+function ia$1(a,b){var c=Array.prototype.slice.call(arguments,1);return function(){var d=c.slice();d.push.apply(d,arguments);return a.apply(this,d)}}function t$1(a,b){function c(){}c.prototype=b.prototype;a.X=b.prototype;a.prototype=new c;a.prototype.constructor=a;a.Wb=function(d,e,f){for(var h=Array(arguments.length-2),n=2;n<arguments.length;n++)h[n-2]=arguments[n];return b.prototype[e].apply(d,h)};}function v$2(){this.s=this.s;this.o=this.o;}var ja$1=0;v$2.prototype.s=!1;v$2.prototype.na=function(){if(!this.s&&(this.s=!0,this.M(),0!=ja$1)){ca$1(this);}};v$2.prototype.M=function(){if(this.o)for(;this.o.length;)this.o.shift()();};const la$1=Array.prototype.indexOf?function(a,b){return Array.prototype.indexOf.call(a,b,void 0)}:function(a,b){if("string"===typeof a)return "string"!==typeof b||1!=b.length?-1:a.indexOf(b,0);for(let c=0;c<a.length;c++)if(c in a&&a[c]===b)return c;return -1};function ma$1(a){const b=a.length;if(0<b){const c=Array(b);for(let d=0;d<b;d++)c[d]=a[d];return c}return []}
+function na$1(a,b){for(let c=1;c<arguments.length;c++){const d=arguments[c];if(ba$1(d)){const e=a.length||0,f=d.length||0;a.length=e+f;for(let h=0;h<f;h++)a[e+h]=d[h];}else a.push(d);}}function w$1(a,b){this.type=a;this.g=this.target=b;this.defaultPrevented=!1;}w$1.prototype.h=function(){this.defaultPrevented=!0;};var oa$1=function(){if(!l$1.addEventListener||!Object.defineProperty)return !1;var a=!1,b=Object.defineProperty({},"passive",{get:function(){a=!0;}});try{l$1.addEventListener("test",aa$1,b),l$1.removeEventListener("test",aa$1,b);}catch(c){}return a}();function pa$1(a){return /^[\s\xa0]*$/.test(a)}var qa$1=String.prototype.trim?function(a){return a.trim()}:function(a){return /^[\s\xa0]*([\s\S]*?)[\s\xa0]*$/.exec(a)[1]};function ra$1(a,b){return a<b?-1:a>b?1:0}function sa$1(){var a=l$1.navigator;return a&&(a=a.userAgent)?a:""}function x$2(a){return -1!=sa$1().indexOf(a)}function ta$1(a){ta$1[" "](a);return a}ta$1[" "]=aa$1;function ua$1(a){var b=va$1;return Object.prototype.hasOwnProperty.call(b,9)?b[9]:b[9]=a(9)}var wa$1=x$2("Opera"),y$1=x$2("Trident")||x$2("MSIE"),xa$1=x$2("Edge"),ya$1=xa$1||y$1,za$1=x$2("Gecko")&&!(-1!=sa$1().toLowerCase().indexOf("webkit")&&!x$2("Edge"))&&!(x$2("Trident")||x$2("MSIE"))&&!x$2("Edge"),Aa$1=-1!=sa$1().toLowerCase().indexOf("webkit")&&!x$2("Edge");function Ba$1(){var a=l$1.document;return a?a.documentMode:void 0}var Ea$1;
+a:{var Fa$1="",Ga$1=function(){var a=sa$1();if(za$1)return /rv:([^\);]+)(\)|;)/.exec(a);if(xa$1)return /Edge\/([\d\.]+)/.exec(a);if(y$1)return /\b(?:MSIE|rv)[: ]([^\);]+)(\)|;)/.exec(a);if(Aa$1)return /WebKit\/(\S+)/.exec(a);if(wa$1)return /(?:Version)[ \/]?(\S+)/.exec(a)}();Ga$1&&(Fa$1=Ga$1?Ga$1[1]:"");if(y$1){var Ha$1=Ba$1();if(null!=Ha$1&&Ha$1>parseFloat(Fa$1)){Ea$1=String(Ha$1);break a}}Ea$1=Fa$1;}var va$1={};
+function Ia$1(){return ua$1(function(){let a=0;const b=qa$1(String(Ea$1)).split("."),c=qa$1("9").split("."),d=Math.max(b.length,c.length);for(let h=0;0==a&&h<d;h++){var e=b[h]||"",f=c[h]||"";do{e=/(\d*)(\D*)(.*)/.exec(e)||["","","",""];f=/(\d*)(\D*)(.*)/.exec(f)||["","","",""];if(0==e[0].length&&0==f[0].length)break;a=ra$1(0==e[1].length?0:parseInt(e[1],10),0==f[1].length?0:parseInt(f[1],10))||ra$1(0==e[2].length,0==f[2].length)||ra$1(e[2],f[2]);e=e[3];f=f[3];}while(0==a)}return 0<=a})}var Ja$1;
+if(l$1.document&&y$1){var Ka$1=Ba$1();Ja$1=Ka$1?Ka$1:parseInt(Ea$1,10)||void 0;}else Ja$1=void 0;var La$1=Ja$1;function z$2(a,b){w$1.call(this,a?a.type:"");this.relatedTarget=this.g=this.target=null;this.button=this.screenY=this.screenX=this.clientY=this.clientX=0;this.key="";this.metaKey=this.shiftKey=this.altKey=this.ctrlKey=!1;this.state=null;this.pointerId=0;this.pointerType="";this.i=null;if(a){var c=this.type=a.type,d=a.changedTouches&&a.changedTouches.length?a.changedTouches[0]:null;this.target=a.target||a.srcElement;this.g=b;if(b=a.relatedTarget){if(za$1){a:{try{ta$1(b.nodeName);var e=!0;break a}catch(f){}e=
 !1;}e||(b=null);}}else "mouseover"==c?b=a.fromElement:"mouseout"==c&&(b=a.toElement);this.relatedTarget=b;d?(this.clientX=void 0!==d.clientX?d.clientX:d.pageX,this.clientY=void 0!==d.clientY?d.clientY:d.pageY,this.screenX=d.screenX||0,this.screenY=d.screenY||0):(this.clientX=void 0!==a.clientX?a.clientX:a.pageX,this.clientY=void 0!==a.clientY?a.clientY:a.pageY,this.screenX=a.screenX||0,this.screenY=a.screenY||0);this.button=a.button;this.key=a.key||"";this.ctrlKey=a.ctrlKey;this.altKey=a.altKey;this.shiftKey=
-a.shiftKey;this.metaKey=a.metaKey;this.pointerId=a.pointerId||0;this.pointerType="string"===typeof a.pointerType?a.pointerType:Ma$1[a.pointerType]||"";this.state=a.state;this.i=a;a.defaultPrevented&&z$2.X.h.call(this);}}t$1(z$2,w);var Ma$1={2:"touch",3:"pen",4:"mouse"};z$2.prototype.h=function(){z$2.X.h.call(this);var a=this.i;a.preventDefault?a.preventDefault():a.returnValue=!1;};var A$1="closure_listenable_"+(1E6*Math.random()|0);var Na=0;function Oa(a,b,c,d,e){this.listener=a;this.proxy=null;this.src=b;this.type=c;this.capture=!!d;this.ha=e;this.key=++Na;this.ba=this.ea=!1;}function Pa(a){a.ba=!0;a.listener=null;a.proxy=null;a.src=null;a.ha=null;}function Qa$1(a,b,c){for(const d in a)b.call(c,a[d],d,a);}function Ra$1(a){const b={};for(const c in a)b[c]=a[c];return b}const Sa="constructor hasOwnProperty isPrototypeOf propertyIsEnumerable toLocaleString toString valueOf".split(" ");function Ta(a,b){let c,d;for(let e=1;e<arguments.length;e++){d=arguments[e];for(c in d)a[c]=d[c];for(let f=0;f<Sa.length;f++)c=Sa[f],Object.prototype.hasOwnProperty.call(d,c)&&(a[c]=d[c]);}}function Ua$1(a){this.src=a;this.g={};this.h=0;}Ua$1.prototype.add=function(a,b,c,d,e){var f=a.toString();a=this.g[f];a||(a=this.g[f]=[],this.h++);var h=Va(a,b,d,e);-1<h?(b=a[h],c||(b.ea=!1)):(b=new Oa(b,this.src,f,!!d,e),b.ea=c,a.push(b));return b};function Wa$1(a,b){var c=b.type;if(c in a.g){var d=a.g[c],e=la(d,b),f;(f=0<=e)&&Array.prototype.splice.call(d,e,1);f&&(Pa(b),0==a.g[c].length&&(delete a.g[c],a.h--));}}
-function Va(a,b,c,d){for(var e=0;e<a.length;++e){var f=a[e];if(!f.ba&&f.listener==b&&f.capture==!!c&&f.ha==d)return e}return -1}var Xa="closure_lm_"+(1E6*Math.random()|0),Ya={};function $a$1(a,b,c,d,e){if(d&&d.once)return ab(a,b,c,d,e);if(Array.isArray(b)){for(var f=0;f<b.length;f++)$a$1(a,b[f],c,d,e);return null}c=bb(c);return a&&a[A$1]?a.N(b,c,p$1(d)?!!d.capture:!!d,e):cb(a,b,c,!1,d,e)}
-function cb(a,b,c,d,e,f){if(!b)throw Error("Invalid event type");var h=p$1(e)?!!e.capture:!!e,n=db$1(a);n||(a[Xa]=n=new Ua$1(a));c=n.add(b,c,d,h,f);if(c.proxy)return c;d=eb();c.proxy=d;d.src=a;d.listener=c;if(a.addEventListener)oa||(e=h),void 0===e&&(e=!1),a.addEventListener(b.toString(),d,e);else if(a.attachEvent)a.attachEvent(fb(b.toString()),d);else if(a.addListener&&a.removeListener)a.addListener(d);else throw Error("addEventListener and attachEvent are unavailable.");return c}
+a.shiftKey;this.metaKey=a.metaKey;this.pointerId=a.pointerId||0;this.pointerType="string"===typeof a.pointerType?a.pointerType:Ma$1[a.pointerType]||"";this.state=a.state;this.i=a;a.defaultPrevented&&z$2.X.h.call(this);}}t$1(z$2,w$1);var Ma$1={2:"touch",3:"pen",4:"mouse"};z$2.prototype.h=function(){z$2.X.h.call(this);var a=this.i;a.preventDefault?a.preventDefault():a.returnValue=!1;};var A$1="closure_listenable_"+(1E6*Math.random()|0);var Na$1=0;function Oa$1(a,b,c,d,e){this.listener=a;this.proxy=null;this.src=b;this.type=c;this.capture=!!d;this.ha=e;this.key=++Na$1;this.ba=this.ea=!1;}function Pa$1(a){a.ba=!0;a.listener=null;a.proxy=null;a.src=null;a.ha=null;}function Qa$1(a,b,c){for(const d in a)b.call(c,a[d],d,a);}function Ra$1(a){const b={};for(const c in a)b[c]=a[c];return b}const Sa$1="constructor hasOwnProperty isPrototypeOf propertyIsEnumerable toLocaleString toString valueOf".split(" ");function Ta$1(a,b){let c,d;for(let e=1;e<arguments.length;e++){d=arguments[e];for(c in d)a[c]=d[c];for(let f=0;f<Sa$1.length;f++)c=Sa$1[f],Object.prototype.hasOwnProperty.call(d,c)&&(a[c]=d[c]);}}function Ua$1(a){this.src=a;this.g={};this.h=0;}Ua$1.prototype.add=function(a,b,c,d,e){var f=a.toString();a=this.g[f];a||(a=this.g[f]=[],this.h++);var h=Va$1(a,b,d,e);-1<h?(b=a[h],c||(b.ea=!1)):(b=new Oa$1(b,this.src,f,!!d,e),b.ea=c,a.push(b));return b};function Wa$1(a,b){var c=b.type;if(c in a.g){var d=a.g[c],e=la$1(d,b),f;(f=0<=e)&&Array.prototype.splice.call(d,e,1);f&&(Pa$1(b),0==a.g[c].length&&(delete a.g[c],a.h--));}}
+function Va$1(a,b,c,d){for(var e=0;e<a.length;++e){var f=a[e];if(!f.ba&&f.listener==b&&f.capture==!!c&&f.ha==d)return e}return -1}var Xa$1="closure_lm_"+(1E6*Math.random()|0),Ya$1={};function $a$1(a,b,c,d,e){if(d&&d.once)return ab(a,b,c,d,e);if(Array.isArray(b)){for(var f=0;f<b.length;f++)$a$1(a,b[f],c,d,e);return null}c=bb(c);return a&&a[A$1]?a.N(b,c,p$1(d)?!!d.capture:!!d,e):cb(a,b,c,!1,d,e)}
+function cb(a,b,c,d,e,f){if(!b)throw Error("Invalid event type");var h=p$1(e)?!!e.capture:!!e,n=db$1(a);n||(a[Xa$1]=n=new Ua$1(a));c=n.add(b,c,d,h,f);if(c.proxy)return c;d=eb();c.proxy=d;d.src=a;d.listener=c;if(a.addEventListener)oa$1||(e=h),void 0===e&&(e=!1),a.addEventListener(b.toString(),d,e);else if(a.attachEvent)a.attachEvent(fb(b.toString()),d);else if(a.addListener&&a.removeListener)a.addListener(d);else throw Error("addEventListener and attachEvent are unavailable.");return c}
 function eb(){function a(c){return b.call(a.src,a.listener,c)}const b=gb;return a}function ab(a,b,c,d,e){if(Array.isArray(b)){for(var f=0;f<b.length;f++)ab(a,b[f],c,d,e);return null}c=bb(c);return a&&a[A$1]?a.O(b,c,p$1(d)?!!d.capture:!!d,e):cb(a,b,c,!0,d,e)}
-function hb(a,b,c,d,e){if(Array.isArray(b))for(var f=0;f<b.length;f++)hb(a,b[f],c,d,e);else (d=p$1(d)?!!d.capture:!!d,c=bb(c),a&&a[A$1])?(a=a.i,b=String(b).toString(),b in a.g&&(f=a.g[b],c=Va(f,c,d,e),-1<c&&(Pa(f[c]),Array.prototype.splice.call(f,c,1),0==f.length&&(delete a.g[b],a.h--)))):a&&(a=db$1(a))&&(b=a.g[b.toString()],a=-1,b&&(a=Va(b,c,d,e)),(c=-1<a?b[a]:null)&&ib(c));}
-function ib(a){if("number"!==typeof a&&a&&!a.ba){var b=a.src;if(b&&b[A$1])Wa$1(b.i,a);else {var c=a.type,d=a.proxy;b.removeEventListener?b.removeEventListener(c,d,a.capture):b.detachEvent?b.detachEvent(fb(c),d):b.addListener&&b.removeListener&&b.removeListener(d);(c=db$1(b))?(Wa$1(c,a),0==c.h&&(c.src=null,b[Xa]=null)):Pa(a);}}}function fb(a){return a in Ya?Ya[a]:Ya[a]="on"+a}function gb(a,b){if(a.ba)a=!0;else {b=new z$2(b,this);var c=a.listener,d=a.ha||a.src;a.ea&&ib(a);a=c.call(d,b);}return a}
-function db$1(a){a=a[Xa];return a instanceof Ua$1?a:null}var jb="__closure_events_fn_"+(1E9*Math.random()>>>0);function bb(a){if("function"===typeof a)return a;a[jb]||(a[jb]=function(b){return a.handleEvent(b)});return a[jb]}function B$1(){v$2.call(this);this.i=new Ua$1(this);this.P=this;this.I=null;}t$1(B$1,v$2);B$1.prototype[A$1]=!0;B$1.prototype.removeEventListener=function(a,b,c,d){hb(this,a,b,c,d);};
-function C$2(a,b){var c,d=a.I;if(d)for(c=[];d;d=d.I)c.push(d);a=a.P;d=b.type||b;if("string"===typeof b)b=new w(b,a);else if(b instanceof w)b.target=b.target||a;else {var e=b;b=new w(d,a);Ta(b,e);}e=!0;if(c)for(var f=c.length-1;0<=f;f--){var h=b.g=c[f];e=kb(h,d,!0,b)&&e;}h=b.g=a;e=kb(h,d,!0,b)&&e;e=kb(h,d,!1,b)&&e;if(c)for(f=0;f<c.length;f++)h=b.g=c[f],e=kb(h,d,!1,b)&&e;}
-B$1.prototype.M=function(){B$1.X.M.call(this);if(this.i){var a=this.i,c;for(c in a.g){for(var d=a.g[c],e=0;e<d.length;e++)Pa(d[e]);delete a.g[c];a.h--;}}this.I=null;};B$1.prototype.N=function(a,b,c,d){return this.i.add(String(a),b,!1,c,d)};B$1.prototype.O=function(a,b,c,d){return this.i.add(String(a),b,!0,c,d)};
+function hb(a,b,c,d,e){if(Array.isArray(b))for(var f=0;f<b.length;f++)hb(a,b[f],c,d,e);else (d=p$1(d)?!!d.capture:!!d,c=bb(c),a&&a[A$1])?(a=a.i,b=String(b).toString(),b in a.g&&(f=a.g[b],c=Va$1(f,c,d,e),-1<c&&(Pa$1(f[c]),Array.prototype.splice.call(f,c,1),0==f.length&&(delete a.g[b],a.h--)))):a&&(a=db$1(a))&&(b=a.g[b.toString()],a=-1,b&&(a=Va$1(b,c,d,e)),(c=-1<a?b[a]:null)&&ib(c));}
+function ib(a){if("number"!==typeof a&&a&&!a.ba){var b=a.src;if(b&&b[A$1])Wa$1(b.i,a);else {var c=a.type,d=a.proxy;b.removeEventListener?b.removeEventListener(c,d,a.capture):b.detachEvent?b.detachEvent(fb(c),d):b.addListener&&b.removeListener&&b.removeListener(d);(c=db$1(b))?(Wa$1(c,a),0==c.h&&(c.src=null,b[Xa$1]=null)):Pa$1(a);}}}function fb(a){return a in Ya$1?Ya$1[a]:Ya$1[a]="on"+a}function gb(a,b){if(a.ba)a=!0;else {b=new z$2(b,this);var c=a.listener,d=a.ha||a.src;a.ea&&ib(a);a=c.call(d,b);}return a}
+function db$1(a){a=a[Xa$1];return a instanceof Ua$1?a:null}var jb="__closure_events_fn_"+(1E9*Math.random()>>>0);function bb(a){if("function"===typeof a)return a;a[jb]||(a[jb]=function(b){return a.handleEvent(b)});return a[jb]}function B$1(){v$2.call(this);this.i=new Ua$1(this);this.P=this;this.I=null;}t$1(B$1,v$2);B$1.prototype[A$1]=!0;B$1.prototype.removeEventListener=function(a,b,c,d){hb(this,a,b,c,d);};
+function C$2(a,b){var c,d=a.I;if(d)for(c=[];d;d=d.I)c.push(d);a=a.P;d=b.type||b;if("string"===typeof b)b=new w$1(b,a);else if(b instanceof w$1)b.target=b.target||a;else {var e=b;b=new w$1(d,a);Ta$1(b,e);}e=!0;if(c)for(var f=c.length-1;0<=f;f--){var h=b.g=c[f];e=kb(h,d,!0,b)&&e;}h=b.g=a;e=kb(h,d,!0,b)&&e;e=kb(h,d,!1,b)&&e;if(c)for(f=0;f<c.length;f++)h=b.g=c[f],e=kb(h,d,!1,b)&&e;}
+B$1.prototype.M=function(){B$1.X.M.call(this);if(this.i){var a=this.i,c;for(c in a.g){for(var d=a.g[c],e=0;e<d.length;e++)Pa$1(d[e]);delete a.g[c];a.h--;}}this.I=null;};B$1.prototype.N=function(a,b,c,d){return this.i.add(String(a),b,!1,c,d)};B$1.prototype.O=function(a,b,c,d){return this.i.add(String(a),b,!0,c,d)};
 function kb(a,b,c,d){b=a.i.g[String(b)];if(!b)return !0;b=b.concat();for(var e=!0,f=0;f<b.length;++f){var h=b[f];if(h&&!h.ba&&h.capture==c){var n=h.listener,u=h.ha||h.src;h.ea&&Wa$1(a.i,h);e=!1!==n.call(u,d)&&e;}}return e&&!d.defaultPrevented}var lb=l$1.JSON.stringify;function mb(){var a=nb;let b=null;a.g&&(b=a.g,a.g=a.g.next,a.g||(a.h=null),b.next=null);return b}class ob{constructor(){this.h=this.g=null;}add(a,b){const c=pb.get();c.set(a,b);this.h?this.h.next=c:this.g=c;this.h=c;}}var pb=new class{constructor(a,b){this.i=a;this.j=b;this.h=0;this.g=null;}get(){let a;0<this.h?(this.h--,a=this.g,this.g=a.next,a.next=null):a=this.i();return a}}(()=>new qb,a=>a.reset());
 class qb{constructor(){this.next=this.g=this.h=null;}set(a,b){this.h=a;this.g=b;this.next=null;}reset(){this.next=this.g=this.h=null;}}function rb(a){l$1.setTimeout(()=>{throw a;},0);}function sb(a,b){ub||vb();wb||(ub(),wb=!0);nb.add(a,b);}var ub;function vb(){var a=l$1.Promise.resolve(void 0);ub=function(){a.then(xb);};}var wb=!1,nb=new ob;function xb(){for(var a;a=mb();){try{a.h.call(a.g);}catch(c){rb(c);}var b=pb;b.j(a);100>b.h&&(b.h++,a.next=b.g,b.g=a);}wb=!1;}function yb(a,b){B$1.call(this);this.h=a||1;this.g=b||l$1;this.j=q$1(this.lb,this);this.l=Date.now();}t$1(yb,B$1);k$2=yb.prototype;k$2.ca=!1;k$2.R=null;k$2.lb=function(){if(this.ca){var a=Date.now()-this.l;0<a&&a<.8*this.h?this.R=this.g.setTimeout(this.j,this.h-a):(this.R&&(this.g.clearTimeout(this.R),this.R=null),C$2(this,"tick"),this.ca&&(zb(this),this.start()));}};k$2.start=function(){this.ca=!0;this.R||(this.R=this.g.setTimeout(this.j,this.h),this.l=Date.now());};
-function zb(a){a.ca=!1;a.R&&(a.g.clearTimeout(a.R),a.R=null);}k$2.M=function(){yb.X.M.call(this);zb(this);delete this.g;};function Ab(a,b,c){if("function"===typeof a)c&&(a=q$1(a,c));else if(a&&"function"==typeof a.handleEvent)a=q$1(a.handleEvent,a);else throw Error("Invalid listener argument");return 2147483647<Number(b)?-1:l$1.setTimeout(a,b||0)}function Bb(a){a.g=Ab(()=>{a.g=null;a.i&&(a.i=!1,Bb(a));},a.j);const b=a.h;a.h=null;a.m.apply(null,b);}class Cb extends v$2{constructor(a,b){super();this.m=a;this.j=b;this.h=null;this.i=!1;this.g=null;}l(a){this.h=arguments;this.g?this.i=!0:Bb(this);}M(){super.M();this.g&&(l$1.clearTimeout(this.g),this.g=null,this.i=!1,this.h=null);}}function D(a){v$2.call(this);this.h=a;this.g={};}t$1(D,v$2);var Db=[];function Eb(a,b,c,d){Array.isArray(c)||(c&&(Db[0]=c.toString()),c=Db);for(var e=0;e<c.length;e++){var f=$a$1(b,c[e],d||a.handleEvent,!1,a.h||a);if(!f)break;a.g[f.key]=f;}}function Fb(a){Qa$1(a.g,function(b,c){this.g.hasOwnProperty(c)&&ib(b);},a);a.g={};}D.prototype.M=function(){D.X.M.call(this);Fb(this);};D.prototype.handleEvent=function(){throw Error("EventHandler.handleEvent not implemented");};function Gb(){this.g=!0;}Gb.prototype.Aa=function(){this.g=!1;};function Hb(a,b,c,d,e,f){a.info(function(){if(a.g)if(f){var h="";for(var n=f.split("&"),u=0;u<n.length;u++){var m=n[u].split("=");if(1<m.length){var r=m[0];m=m[1];var F=r.split("_");h=2<=F.length&&"type"==F[1]?h+(r+"="+m+"&"):h+(r+"=redacted&");}}}else h=null;else h=f;return "XMLHTTP REQ ("+d+") [attempt "+e+"]: "+b+"\n"+c+"\n"+h});}
+function zb(a){a.ca=!1;a.R&&(a.g.clearTimeout(a.R),a.R=null);}k$2.M=function(){yb.X.M.call(this);zb(this);delete this.g;};function Ab(a,b,c){if("function"===typeof a)c&&(a=q$1(a,c));else if(a&&"function"==typeof a.handleEvent)a=q$1(a.handleEvent,a);else throw Error("Invalid listener argument");return 2147483647<Number(b)?-1:l$1.setTimeout(a,b||0)}function Bb(a){a.g=Ab(()=>{a.g=null;a.i&&(a.i=!1,Bb(a));},a.j);const b=a.h;a.h=null;a.m.apply(null,b);}class Cb extends v$2{constructor(a,b){super();this.m=a;this.j=b;this.h=null;this.i=!1;this.g=null;}l(a){this.h=arguments;this.g?this.i=!0:Bb(this);}M(){super.M();this.g&&(l$1.clearTimeout(this.g),this.g=null,this.i=!1,this.h=null);}}function D$1(a){v$2.call(this);this.h=a;this.g={};}t$1(D$1,v$2);var Db=[];function Eb(a,b,c,d){Array.isArray(c)||(c&&(Db[0]=c.toString()),c=Db);for(var e=0;e<c.length;e++){var f=$a$1(b,c[e],d||a.handleEvent,!1,a.h||a);if(!f)break;a.g[f.key]=f;}}function Fb(a){Qa$1(a.g,function(b,c){this.g.hasOwnProperty(c)&&ib(b);},a);a.g={};}D$1.prototype.M=function(){D$1.X.M.call(this);Fb(this);};D$1.prototype.handleEvent=function(){throw Error("EventHandler.handleEvent not implemented");};function Gb(){this.g=!0;}Gb.prototype.Aa=function(){this.g=!1;};function Hb(a,b,c,d,e,f){a.info(function(){if(a.g)if(f){var h="";for(var n=f.split("&"),u=0;u<n.length;u++){var m=n[u].split("=");if(1<m.length){var r=m[0];m=m[1];var F=r.split("_");h=2<=F.length&&"type"==F[1]?h+(r+"="+m+"&"):h+(r+"=redacted&");}}}else h=null;else h=f;return "XMLHTTP REQ ("+d+") [attempt "+e+"]: "+b+"\n"+c+"\n"+h});}
 function Ib(a,b,c,d,e,f,h){a.info(function(){return "XMLHTTP RESP ("+d+") [ attempt "+e+"]: "+b+"\n"+c+"\n"+f+" "+h});}function E$1(a,b,c,d){a.info(function(){return "XMLHTTP TEXT ("+b+"): "+Jb(a,c)+(d?" "+d:"")});}function Kb(a,b){a.info(function(){return "TIMEOUT: "+b});}Gb.prototype.info=function(){};
-function Jb(a,b){if(!a.g)return b;if(!b)return null;try{var c=JSON.parse(b);if(c)for(a=0;a<c.length;a++)if(Array.isArray(c[a])){var d=c[a];if(!(2>d.length)){var e=d[1];if(Array.isArray(e)&&!(1>e.length)){var f=e[0];if("noop"!=f&&"stop"!=f&&"close"!=f)for(var h=1;h<e.length;h++)e[h]="";}}}return lb(c)}catch(n){return b}}var G$1={},Lb=null;function Mb(){return Lb=Lb||new B$1}G$1.Pa="serverreachability";function Nb(a){w.call(this,G$1.Pa,a);}t$1(Nb,w);function H$2(a){const b=Mb();C$2(b,new Nb(b));}G$1.STAT_EVENT="statevent";function Ob(a,b){w.call(this,G$1.STAT_EVENT,a);this.stat=b;}t$1(Ob,w);function I$1(a){const b=Mb();C$2(b,new Ob(b,a));}G$1.Qa="timingevent";function Pb(a,b){w.call(this,G$1.Qa,a);this.size=b;}t$1(Pb,w);
-function J(a,b){if("function"!==typeof a)throw Error("Fn must not be null and must be a function");return l$1.setTimeout(function(){a();},b)}var Qb={NO_ERROR:0,mb:1,zb:2,yb:3,tb:4,xb:5,Ab:6,Ma:7,TIMEOUT:8,Db:9};var Rb={rb:"complete",Nb:"success",Na:"error",Ma:"abort",Fb:"ready",Gb:"readystatechange",TIMEOUT:"timeout",Bb:"incrementaldata",Eb:"progress",ub:"downloadprogress",Vb:"uploadprogress"};function Sb(){}Sb.prototype.h=null;function Tb(a){return a.h||(a.h=a.i())}function Ub(){}var K$1={OPEN:"a",qb:"b",Na:"c",Cb:"d"};function Vb(){w.call(this,"d");}t$1(Vb,w);function Wb(){w.call(this,"c");}t$1(Wb,w);var Xb;function Yb(){}t$1(Yb,Sb);Yb.prototype.g=function(){return new XMLHttpRequest};Yb.prototype.i=function(){return {}};Xb=new Yb;function L$1(a,b,c,d){this.l=a;this.j=b;this.m=c;this.U=d||1;this.S=new D(this);this.O=Zb;a=ya$1?125:void 0;this.T=new yb(a);this.H=null;this.i=!1;this.s=this.A=this.v=this.K=this.F=this.V=this.B=null;this.D=[];this.g=null;this.C=0;this.o=this.u=null;this.Y=-1;this.I=!1;this.N=0;this.L=null;this.$=this.J=this.Z=this.P=!1;this.h=new $b;}function $b(){this.i=null;this.g="";this.h=!1;}var Zb=45E3,ac$1={},bc$1={};k$2=L$1.prototype;k$2.setTimeout=function(a){this.O=a;};
+function Jb(a,b){if(!a.g)return b;if(!b)return null;try{var c=JSON.parse(b);if(c)for(a=0;a<c.length;a++)if(Array.isArray(c[a])){var d=c[a];if(!(2>d.length)){var e=d[1];if(Array.isArray(e)&&!(1>e.length)){var f=e[0];if("noop"!=f&&"stop"!=f&&"close"!=f)for(var h=1;h<e.length;h++)e[h]="";}}}return lb(c)}catch(n){return b}}var G$1={},Lb=null;function Mb(){return Lb=Lb||new B$1}G$1.Pa="serverreachability";function Nb(a){w$1.call(this,G$1.Pa,a);}t$1(Nb,w$1);function H$2(a){const b=Mb();C$2(b,new Nb(b));}G$1.STAT_EVENT="statevent";function Ob(a,b){w$1.call(this,G$1.STAT_EVENT,a);this.stat=b;}t$1(Ob,w$1);function I$1(a){const b=Mb();C$2(b,new Ob(b,a));}G$1.Qa="timingevent";function Pb(a,b){w$1.call(this,G$1.Qa,a);this.size=b;}t$1(Pb,w$1);
+function J$1(a,b){if("function"!==typeof a)throw Error("Fn must not be null and must be a function");return l$1.setTimeout(function(){a();},b)}var Qb={NO_ERROR:0,mb:1,zb:2,yb:3,tb:4,xb:5,Ab:6,Ma:7,TIMEOUT:8,Db:9};var Rb={rb:"complete",Nb:"success",Na:"error",Ma:"abort",Fb:"ready",Gb:"readystatechange",TIMEOUT:"timeout",Bb:"incrementaldata",Eb:"progress",ub:"downloadprogress",Vb:"uploadprogress"};function Sb(){}Sb.prototype.h=null;function Tb(a){return a.h||(a.h=a.i())}function Ub(){}var K$1={OPEN:"a",qb:"b",Na:"c",Cb:"d"};function Vb(){w$1.call(this,"d");}t$1(Vb,w$1);function Wb(){w$1.call(this,"c");}t$1(Wb,w$1);var Xb;function Yb(){}t$1(Yb,Sb);Yb.prototype.g=function(){return new XMLHttpRequest};Yb.prototype.i=function(){return {}};Xb=new Yb;function L$2(a,b,c,d){this.l=a;this.j=b;this.m=c;this.U=d||1;this.S=new D$1(this);this.O=Zb;a=ya$1?125:void 0;this.T=new yb(a);this.H=null;this.i=!1;this.s=this.A=this.v=this.K=this.F=this.V=this.B=null;this.D=[];this.g=null;this.C=0;this.o=this.u=null;this.Y=-1;this.I=!1;this.N=0;this.L=null;this.$=this.J=this.Z=this.P=!1;this.h=new $b;}function $b(){this.i=null;this.g="";this.h=!1;}var Zb=45E3,ac$1={},bc$1={};k$2=L$2.prototype;k$2.setTimeout=function(a){this.O=a;};
 function cc$1(a,b,c){a.K=1;a.v=dc$1(M$2(b));a.s=c;a.P=!0;ec$1(a,null);}function ec$1(a,b){a.F=Date.now();N$2(a);a.A=M$2(a.v);var c=a.A,d=a.U;Array.isArray(d)||(d=[String(d)]);fc$1(c.i,"t",d);a.C=0;c=a.l.H;a.h=new $b;a.g=gc$1(a.l,c?b:null,!a.s);0<a.N&&(a.L=new Cb(q$1(a.La,a,a.g),a.N));Eb(a.S,a.g,"readystatechange",a.ib);b=a.H?Ra$1(a.H):{};a.s?(a.u||(a.u="POST"),b["Content-Type"]="application/x-www-form-urlencoded",a.g.da(a.A,a.u,a.s,b)):(a.u="GET",a.g.da(a.A,a.u,null,b));H$2();Hb(a.j,a.u,a.A,a.m,a.U,a.s);}
 k$2.ib=function(a){a=a.target;const b=this.L;b&&3==O$1(a)?b.l():this.La(a);};
 k$2.La=function(a){try{if(a==this.g)a:{const r=O$1(this.g);var b=this.g.Ea();const F=this.g.aa();if(!(3>r)&&(3!=r||ya$1||this.g&&(this.h.h||this.g.fa()||hc$1(this.g)))){this.I||4!=r||7==b||(8==b||0>=F?H$2(3):H$2(2));ic$1(this);var c=this.g.aa();this.Y=c;b:if(jc$1(this)){var d=hc$1(this.g);a="";var e=d.length,f=4==O$1(this.g);if(!this.h.i){if("undefined"===typeof TextDecoder){P$2(this);Q$1(this);var h="";break b}this.h.i=new l$1.TextDecoder;}for(b=0;b<e;b++)this.h.h=!0,a+=this.h.i.decode(d[b],{stream:f&&b==e-1});d.splice(0,
 e);this.h.g+=a;this.C=0;h=this.h.g;}else h=this.g.fa();this.i=200==c;Ib(this.j,this.u,this.A,this.m,this.U,r,c);if(this.i){if(this.Z&&!this.J){b:{if(this.g){var n,u=this.g;if((n=u.g?u.g.getResponseHeader("X-HTTP-Initial-Response"):null)&&!pa$1(n)){var m=n;break b}}m=null;}if(c=m)E$1(this.j,this.m,c,"Initial handshake response via X-HTTP-Initial-Response"),this.J=!0,kc$1(this,c);else {this.i=!1;this.o=3;I$1(12);P$2(this);Q$1(this);break a}}this.P?(lc$1(this,r,h),ya$1&&this.i&&3==r&&(Eb(this.S,this.T,"tick",this.hb),
 this.T.start())):(E$1(this.j,this.m,h,null),kc$1(this,h));4==r&&P$2(this);this.i&&!this.I&&(4==r?mc$1(this.l,this):(this.i=!1,N$2(this)));}else 400==c&&0<h.indexOf("Unknown SID")?(this.o=3,I$1(12)):(this.o=0,I$1(13)),P$2(this),Q$1(this);}}}catch(r){}finally{}};function jc$1(a){return a.g?"GET"==a.u&&2!=a.K&&a.l.Da:!1}
 function lc$1(a,b,c){let d=!0,e;for(;!a.I&&a.C<c.length;)if(e=nc$1(a,c),e==bc$1){4==b&&(a.o=4,I$1(14),d=!1);E$1(a.j,a.m,null,"[Incomplete Response]");break}else if(e==ac$1){a.o=4;I$1(15);E$1(a.j,a.m,c,"[Invalid Chunk]");d=!1;break}else E$1(a.j,a.m,e,null),kc$1(a,e);jc$1(a)&&e!=bc$1&&e!=ac$1&&(a.h.g="",a.C=0);4!=b||0!=c.length||a.h.h||(a.o=1,I$1(16),d=!1);a.i=a.i&&d;d?0<c.length&&!a.$&&(a.$=!0,b=a.l,b.g==a&&b.$&&!b.K&&(b.j.info("Great, no buffering proxy detected. Bytes received: "+c.length),oc$1(b),b.K=!0,I$1(11))):(E$1(a.j,a.m,c,
-"[Invalid Chunked Response]"),P$2(a),Q$1(a));}k$2.hb=function(){if(this.g){var a=O$1(this.g),b=this.g.fa();this.C<b.length&&(ic$1(this),lc$1(this,a,b),this.i&&4!=a&&N$2(this));}};function nc$1(a,b){var c=a.C,d=b.indexOf("\n",c);if(-1==d)return bc$1;c=Number(b.substring(c,d));if(isNaN(c))return ac$1;d+=1;if(d+c>b.length)return bc$1;b=b.substr(d,c);a.C=d+c;return b}k$2.cancel=function(){this.I=!0;P$2(this);};function N$2(a){a.V=Date.now()+a.O;pc(a,a.O);}
-function pc(a,b){if(null!=a.B)throw Error("WatchDog timer not null");a.B=J(q$1(a.gb,a),b);}function ic$1(a){a.B&&(l$1.clearTimeout(a.B),a.B=null);}k$2.gb=function(){this.B=null;const a=Date.now();0<=a-this.V?(Kb(this.j,this.A),2!=this.K&&(H$2(),I$1(17)),P$2(this),this.o=2,Q$1(this)):pc(this,this.V-a);};function Q$1(a){0==a.l.G||a.I||mc$1(a.l,a);}function P$2(a){ic$1(a);var b=a.L;b&&"function"==typeof b.na&&b.na();a.L=null;zb(a.T);Fb(a.S);a.g&&(b=a.g,a.g=null,b.abort(),b.na());}
-function kc$1(a,b){try{var c=a.l;if(0!=c.G&&(c.g==a||qc$1(c.h,a)))if(!a.J&&qc$1(c.h,a)&&3==c.G){try{var d=c.Fa.g.parse(b);}catch(m){d=null;}if(Array.isArray(d)&&3==d.length){var e=d;if(0==e[0])a:{if(!c.u){if(c.g)if(c.g.F+3E3<a.F)rc$1(c),sc$1(c);else break a;tc$1(c);I$1(18);}}else c.Ba=e[1],0<c.Ba-c.T&&37500>e[2]&&c.L&&0==c.A&&!c.v&&(c.v=J(q$1(c.cb,c),6E3));if(1>=uc$1(c.h)&&c.ja){try{c.ja();}catch(m){}c.ja=void 0;}}else R$1(c,11);}else if((a.J||c.g==a)&&rc$1(c),!pa$1(b))for(e=c.Fa.g.parse(b),b=0;b<e.length;b++){let m=e[b];c.T=
+"[Invalid Chunked Response]"),P$2(a),Q$1(a));}k$2.hb=function(){if(this.g){var a=O$1(this.g),b=this.g.fa();this.C<b.length&&(ic$1(this),lc$1(this,a,b),this.i&&4!=a&&N$2(this));}};function nc$1(a,b){var c=a.C,d=b.indexOf("\n",c);if(-1==d)return bc$1;c=Number(b.substring(c,d));if(isNaN(c))return ac$1;d+=1;if(d+c>b.length)return bc$1;b=b.substr(d,c);a.C=d+c;return b}k$2.cancel=function(){this.I=!0;P$2(this);};function N$2(a){a.V=Date.now()+a.O;pc$1(a,a.O);}
+function pc$1(a,b){if(null!=a.B)throw Error("WatchDog timer not null");a.B=J$1(q$1(a.gb,a),b);}function ic$1(a){a.B&&(l$1.clearTimeout(a.B),a.B=null);}k$2.gb=function(){this.B=null;const a=Date.now();0<=a-this.V?(Kb(this.j,this.A),2!=this.K&&(H$2(),I$1(17)),P$2(this),this.o=2,Q$1(this)):pc$1(this,this.V-a);};function Q$1(a){0==a.l.G||a.I||mc$1(a.l,a);}function P$2(a){ic$1(a);var b=a.L;b&&"function"==typeof b.na&&b.na();a.L=null;zb(a.T);Fb(a.S);a.g&&(b=a.g,a.g=null,b.abort(),b.na());}
+function kc$1(a,b){try{var c=a.l;if(0!=c.G&&(c.g==a||qc$1(c.h,a)))if(!a.J&&qc$1(c.h,a)&&3==c.G){try{var d=c.Fa.g.parse(b);}catch(m){d=null;}if(Array.isArray(d)&&3==d.length){var e=d;if(0==e[0])a:{if(!c.u){if(c.g)if(c.g.F+3E3<a.F)rc$1(c),sc$1(c);else break a;tc$1(c);I$1(18);}}else c.Ba=e[1],0<c.Ba-c.T&&37500>e[2]&&c.L&&0==c.A&&!c.v&&(c.v=J$1(q$1(c.cb,c),6E3));if(1>=uc$1(c.h)&&c.ja){try{c.ja();}catch(m){}c.ja=void 0;}}else R$1(c,11);}else if((a.J||c.g==a)&&rc$1(c),!pa$1(b))for(e=c.Fa.g.parse(b),b=0;b<e.length;b++){let m=e[b];c.T=
 m[0];m=m[1];if(2==c.G)if("c"==m[0]){c.I=m[1];c.ka=m[2];const r=m[3];null!=r&&(c.ma=r,c.j.info("VER="+c.ma));const F=m[4];null!=F&&(c.Ca=F,c.j.info("SVER="+c.Ca));const Ca=m[5];null!=Ca&&"number"===typeof Ca&&0<Ca&&(d=1.5*Ca,c.J=d,c.j.info("backChannelRequestTimeoutMs_="+d));d=c;const Z=a.g;if(Z){const Da=Z.g?Z.g.getResponseHeader("X-Client-Wire-Protocol"):null;if(Da){var f=d.h;f.g||-1==Da.indexOf("spdy")&&-1==Da.indexOf("quic")&&-1==Da.indexOf("h2")||(f.j=f.l,f.g=new Set,f.h&&(vc$1(f,f.h),f.h=null));}if(d.D){const tb=
-Z.g?Z.g.getResponseHeader("X-HTTP-Session-Id"):null;tb&&(d.za=tb,S$2(d.F,d.D,tb));}}c.G=3;c.l&&c.l.xa();c.$&&(c.P=Date.now()-a.F,c.j.info("Handshake RTT: "+c.P+"ms"));d=c;var h=a;d.sa=wc$1(d,d.H?d.ka:null,d.V);if(h.J){xc$1(d.h,h);var n=h,u=d.J;u&&n.setTimeout(u);n.B&&(ic$1(n),N$2(n));d.g=h;}else yc$1(d);0<c.i.length&&zc$1(c);}else "stop"!=m[0]&&"close"!=m[0]||R$1(c,7);else 3==c.G&&("stop"==m[0]||"close"==m[0]?"stop"==m[0]?R$1(c,7):Ac$1(c):"noop"!=m[0]&&c.l&&c.l.wa(m),c.A=0);}H$2(4);}catch(m){}}function Bc$1(a){if(a.W&&"function"==typeof a.W)return a.W();if("undefined"!==typeof Map&&a instanceof Map||"undefined"!==typeof Set&&a instanceof Set)return Array.from(a.values());if("string"===typeof a)return a.split("");if(ba(a)){for(var b=[],c=a.length,d=0;d<c;d++)b.push(a[d]);return b}b=[];c=0;for(d in a)b[c++]=a[d];return b}
-function Cc$1(a){if(a.oa&&"function"==typeof a.oa)return a.oa();if(!a.W||"function"!=typeof a.W){if("undefined"!==typeof Map&&a instanceof Map)return Array.from(a.keys());if(!("undefined"!==typeof Set&&a instanceof Set)){if(ba(a)||"string"===typeof a){var b=[];a=a.length;for(var c=0;c<a;c++)b.push(c);return b}b=[];c=0;for(const d in a)b[c++]=d;return b}}}
-function Dc$1(a,b){if(a.forEach&&"function"==typeof a.forEach)a.forEach(b,void 0);else if(ba(a)||"string"===typeof a)Array.prototype.forEach.call(a,b,void 0);else for(var c=Cc$1(a),d=Bc$1(a),e=d.length,f=0;f<e;f++)b.call(void 0,d[f],c&&c[f],a);}var Ec=RegExp("^(?:([^:/?#.]+):)?(?://(?:([^\\\\/?#]*)@)?([^\\\\/?#]*?)(?::([0-9]+))?(?=[\\\\/?#]|$))?([^?#]+)?(?:\\?([^#]*))?(?:#([\\s\\S]*))?$");function Fc$1(a,b){if(a){a=a.split("&");for(var c=0;c<a.length;c++){var d=a[c].indexOf("="),e=null;if(0<=d){var f=a[c].substring(0,d);e=a[c].substring(d+1);}else f=a[c];b(f,e?decodeURIComponent(e.replace(/\+/g," ")):"");}}}function T$1(a,b){this.g=this.s=this.j="";this.m=null;this.o=this.l="";this.h=!1;if(a instanceof T$1){this.h=void 0!==b?b:a.h;Gc$1(this,a.j);this.s=a.s;this.g=a.g;Hc(this,a.m);this.l=a.l;b=a.i;var c=new Ic;c.i=b.i;b.g&&(c.g=new Map(b.g),c.h=b.h);Jc(this,c);this.o=a.o;}else a&&(c=String(a).match(Ec))?(this.h=!!b,Gc$1(this,c[1]||"",!0),this.s=Kc$1(c[2]||""),this.g=Kc$1(c[3]||"",!0),Hc(this,c[4]),this.l=Kc$1(c[5]||"",!0),Jc(this,c[6]||"",!0),this.o=Kc$1(c[7]||"")):(this.h=!!b,this.i=new Ic(null,this.h));}
+Z.g?Z.g.getResponseHeader("X-HTTP-Session-Id"):null;tb&&(d.za=tb,S$2(d.F,d.D,tb));}}c.G=3;c.l&&c.l.xa();c.$&&(c.P=Date.now()-a.F,c.j.info("Handshake RTT: "+c.P+"ms"));d=c;var h=a;d.sa=wc$1(d,d.H?d.ka:null,d.V);if(h.J){xc$1(d.h,h);var n=h,u=d.J;u&&n.setTimeout(u);n.B&&(ic$1(n),N$2(n));d.g=h;}else yc$1(d);0<c.i.length&&zc$1(c);}else "stop"!=m[0]&&"close"!=m[0]||R$1(c,7);else 3==c.G&&("stop"==m[0]||"close"==m[0]?"stop"==m[0]?R$1(c,7):Ac$1(c):"noop"!=m[0]&&c.l&&c.l.wa(m),c.A=0);}H$2(4);}catch(m){}}function Bc$1(a){if(a.W&&"function"==typeof a.W)return a.W();if("undefined"!==typeof Map&&a instanceof Map||"undefined"!==typeof Set&&a instanceof Set)return Array.from(a.values());if("string"===typeof a)return a.split("");if(ba$1(a)){for(var b=[],c=a.length,d=0;d<c;d++)b.push(a[d]);return b}b=[];c=0;for(d in a)b[c++]=a[d];return b}
+function Cc$1(a){if(a.oa&&"function"==typeof a.oa)return a.oa();if(!a.W||"function"!=typeof a.W){if("undefined"!==typeof Map&&a instanceof Map)return Array.from(a.keys());if(!("undefined"!==typeof Set&&a instanceof Set)){if(ba$1(a)||"string"===typeof a){var b=[];a=a.length;for(var c=0;c<a;c++)b.push(c);return b}b=[];c=0;for(const d in a)b[c++]=d;return b}}}
+function Dc$1(a,b){if(a.forEach&&"function"==typeof a.forEach)a.forEach(b,void 0);else if(ba$1(a)||"string"===typeof a)Array.prototype.forEach.call(a,b,void 0);else for(var c=Cc$1(a),d=Bc$1(a),e=d.length,f=0;f<e;f++)b.call(void 0,d[f],c&&c[f],a);}var Ec$1=RegExp("^(?:([^:/?#.]+):)?(?://(?:([^\\\\/?#]*)@)?([^\\\\/?#]*?)(?::([0-9]+))?(?=[\\\\/?#]|$))?([^?#]+)?(?:\\?([^#]*))?(?:#([\\s\\S]*))?$");function Fc$1(a,b){if(a){a=a.split("&");for(var c=0;c<a.length;c++){var d=a[c].indexOf("="),e=null;if(0<=d){var f=a[c].substring(0,d);e=a[c].substring(d+1);}else f=a[c];b(f,e?decodeURIComponent(e.replace(/\+/g," ")):"");}}}function T$1(a,b){this.g=this.s=this.j="";this.m=null;this.o=this.l="";this.h=!1;if(a instanceof T$1){this.h=void 0!==b?b:a.h;Gc$1(this,a.j);this.s=a.s;this.g=a.g;Hc$1(this,a.m);this.l=a.l;b=a.i;var c=new Ic$1;c.i=b.i;b.g&&(c.g=new Map(b.g),c.h=b.h);Jc$1(this,c);this.o=a.o;}else a&&(c=String(a).match(Ec$1))?(this.h=!!b,Gc$1(this,c[1]||"",!0),this.s=Kc$1(c[2]||""),this.g=Kc$1(c[3]||"",!0),Hc$1(this,c[4]),this.l=Kc$1(c[5]||"",!0),Jc$1(this,c[6]||"",!0),this.o=Kc$1(c[7]||"")):(this.h=!!b,this.i=new Ic$1(null,this.h));}
 T$1.prototype.toString=function(){var a=[],b=this.j;b&&a.push(Lc$1(b,Mc$1,!0),":");var c=this.g;if(c||"file"==b)a.push("//"),(b=this.s)&&a.push(Lc$1(b,Mc$1,!0),"@"),a.push(encodeURIComponent(String(c)).replace(/%25([0-9a-fA-F]{2})/g,"%$1")),c=this.m,null!=c&&a.push(":",String(c));if(c=this.l)this.g&&"/"!=c.charAt(0)&&a.push("/"),a.push(Lc$1(c,"/"==c.charAt(0)?Nc$1:Oc$1,!0));(c=this.i.toString())&&a.push("?",c);(c=this.o)&&a.push("#",Lc$1(c,Pc$1));return a.join("")};function M$2(a){return new T$1(a)}
-function Gc$1(a,b,c){a.j=c?Kc$1(b,!0):b;a.j&&(a.j=a.j.replace(/:$/,""));}function Hc(a,b){if(b){b=Number(b);if(isNaN(b)||0>b)throw Error("Bad port number "+b);a.m=b;}else a.m=null;}function Jc(a,b,c){b instanceof Ic?(a.i=b,Qc$1(a.i,a.h)):(c||(b=Lc$1(b,Rc$1)),a.i=new Ic(b,a.h));}function S$2(a,b,c){a.i.set(b,c);}function dc$1(a){S$2(a,"zx",Math.floor(2147483648*Math.random()).toString(36)+Math.abs(Math.floor(2147483648*Math.random())^Date.now()).toString(36));return a}
-function Kc$1(a,b){return a?b?decodeURI(a.replace(/%25/g,"%2525")):decodeURIComponent(a):""}function Lc$1(a,b,c){return "string"===typeof a?(a=encodeURI(a).replace(b,Sc$1),c&&(a=a.replace(/%25([0-9a-fA-F]{2})/g,"%$1")),a):null}function Sc$1(a){a=a.charCodeAt(0);return "%"+(a>>4&15).toString(16)+(a&15).toString(16)}var Mc$1=/[#\/\?@]/g,Oc$1=/[#\?:]/g,Nc$1=/[#\?]/g,Rc$1=/[#\?@]/g,Pc$1=/#/g;function Ic(a,b){this.h=this.g=null;this.i=a||null;this.j=!!b;}
-function U$1(a){a.g||(a.g=new Map,a.h=0,a.i&&Fc$1(a.i,function(b,c){a.add(decodeURIComponent(b.replace(/\+/g," ")),c);}));}k$2=Ic.prototype;k$2.add=function(a,b){U$1(this);this.i=null;a=V$2(this,a);var c=this.g.get(a);c||this.g.set(a,c=[]);c.push(b);this.h+=1;return this};function Tc(a,b){U$1(a);b=V$2(a,b);a.g.has(b)&&(a.i=null,a.h-=a.g.get(b).length,a.g.delete(b));}function Uc$1(a,b){U$1(a);b=V$2(a,b);return a.g.has(b)}
+function Gc$1(a,b,c){a.j=c?Kc$1(b,!0):b;a.j&&(a.j=a.j.replace(/:$/,""));}function Hc$1(a,b){if(b){b=Number(b);if(isNaN(b)||0>b)throw Error("Bad port number "+b);a.m=b;}else a.m=null;}function Jc$1(a,b,c){b instanceof Ic$1?(a.i=b,Qc$1(a.i,a.h)):(c||(b=Lc$1(b,Rc$1)),a.i=new Ic$1(b,a.h));}function S$2(a,b,c){a.i.set(b,c);}function dc$1(a){S$2(a,"zx",Math.floor(2147483648*Math.random()).toString(36)+Math.abs(Math.floor(2147483648*Math.random())^Date.now()).toString(36));return a}
+function Kc$1(a,b){return a?b?decodeURI(a.replace(/%25/g,"%2525")):decodeURIComponent(a):""}function Lc$1(a,b,c){return "string"===typeof a?(a=encodeURI(a).replace(b,Sc$1),c&&(a=a.replace(/%25([0-9a-fA-F]{2})/g,"%$1")),a):null}function Sc$1(a){a=a.charCodeAt(0);return "%"+(a>>4&15).toString(16)+(a&15).toString(16)}var Mc$1=/[#\/\?@]/g,Oc$1=/[#\?:]/g,Nc$1=/[#\?]/g,Rc$1=/[#\?@]/g,Pc$1=/#/g;function Ic$1(a,b){this.h=this.g=null;this.i=a||null;this.j=!!b;}
+function U$1(a){a.g||(a.g=new Map,a.h=0,a.i&&Fc$1(a.i,function(b,c){a.add(decodeURIComponent(b.replace(/\+/g," ")),c);}));}k$2=Ic$1.prototype;k$2.add=function(a,b){U$1(this);this.i=null;a=V$2(this,a);var c=this.g.get(a);c||this.g.set(a,c=[]);c.push(b);this.h+=1;return this};function Tc$1(a,b){U$1(a);b=V$2(a,b);a.g.has(b)&&(a.i=null,a.h-=a.g.get(b).length,a.g.delete(b));}function Uc$1(a,b){U$1(a);b=V$2(a,b);return a.g.has(b)}
 k$2.forEach=function(a,b){U$1(this);this.g.forEach(function(c,d){c.forEach(function(e){a.call(b,e,d,this);},this);},this);};k$2.oa=function(){U$1(this);const a=Array.from(this.g.values()),b=Array.from(this.g.keys()),c=[];for(let d=0;d<b.length;d++){const e=a[d];for(let f=0;f<e.length;f++)c.push(b[d]);}return c};k$2.W=function(a){U$1(this);let b=[];if("string"===typeof a)Uc$1(this,a)&&(b=b.concat(this.g.get(V$2(this,a))));else {a=Array.from(this.g.values());for(let c=0;c<a.length;c++)b=b.concat(a[c]);}return b};
-k$2.set=function(a,b){U$1(this);this.i=null;a=V$2(this,a);Uc$1(this,a)&&(this.h-=this.g.get(a).length);this.g.set(a,[b]);this.h+=1;return this};k$2.get=function(a,b){if(!a)return b;a=this.W(a);return 0<a.length?String(a[0]):b};function fc$1(a,b,c){Tc(a,b);0<c.length&&(a.i=null,a.g.set(V$2(a,b),ma$1(c)),a.h+=c.length);}
+k$2.set=function(a,b){U$1(this);this.i=null;a=V$2(this,a);Uc$1(this,a)&&(this.h-=this.g.get(a).length);this.g.set(a,[b]);this.h+=1;return this};k$2.get=function(a,b){if(!a)return b;a=this.W(a);return 0<a.length?String(a[0]):b};function fc$1(a,b,c){Tc$1(a,b);0<c.length&&(a.i=null,a.g.set(V$2(a,b),ma$1(c)),a.h+=c.length);}
 k$2.toString=function(){if(this.i)return this.i;if(!this.g)return "";const a=[],b=Array.from(this.g.keys());for(var c=0;c<b.length;c++){var d=b[c];const f=encodeURIComponent(String(d)),h=this.W(d);for(d=0;d<h.length;d++){var e=f;""!==h[d]&&(e+="="+encodeURIComponent(String(h[d])));a.push(e);}}return this.i=a.join("&")};function V$2(a,b){b=String(b);a.j&&(b=b.toLowerCase());return b}
-function Qc$1(a,b){b&&!a.j&&(U$1(a),a.i=null,a.g.forEach(function(c,d){var e=d.toLowerCase();d!=e&&(Tc(this,d),fc$1(this,e,c));},a));a.j=b;}var Vc$1=class{constructor(a,b){this.h=a;this.g=b;}};function Wc$1(a){this.l=a||Xc;l$1.PerformanceNavigationTiming?(a=l$1.performance.getEntriesByType("navigation"),a=0<a.length&&("hq"==a[0].nextHopProtocol||"h2"==a[0].nextHopProtocol)):a=!!(l$1.g&&l$1.g.Ga&&l$1.g.Ga()&&l$1.g.Ga().$b);this.j=a?this.l:1;this.g=null;1<this.j&&(this.g=new Set);this.h=null;this.i=[];}var Xc=10;function Yc(a){return a.h?!0:a.g?a.g.size>=a.j:!1}function uc$1(a){return a.h?1:a.g?a.g.size:0}function qc$1(a,b){return a.h?a.h==b:a.g?a.g.has(b):!1}function vc$1(a,b){a.g?a.g.add(b):a.h=b;}
-function xc$1(a,b){a.h&&a.h==b?a.h=null:a.g&&a.g.has(b)&&a.g.delete(b);}Wc$1.prototype.cancel=function(){this.i=Zc(this);if(this.h)this.h.cancel(),this.h=null;else if(this.g&&0!==this.g.size){for(const a of this.g.values())a.cancel();this.g.clear();}};function Zc(a){if(null!=a.h)return a.i.concat(a.h.D);if(null!=a.g&&0!==a.g.size){let b=a.i;for(const c of a.g.values())b=b.concat(c.D);return b}return ma$1(a.i)}function $c(){}$c.prototype.stringify=function(a){return l$1.JSON.stringify(a,void 0)};$c.prototype.parse=function(a){return l$1.JSON.parse(a,void 0)};function ad(){this.g=new $c;}function bd(a,b,c){const d=c||"";try{Dc$1(a,function(e,f){let h=e;p$1(e)&&(h=lb(e));b.push(d+f+"="+encodeURIComponent(h));});}catch(e){throw b.push(d+"type="+encodeURIComponent("_badmap")),e;}}function cd(a,b){const c=new Gb;if(l$1.Image){const d=new Image;d.onload=ia$1(dd,c,d,"TestLoadImage: loaded",!0,b);d.onerror=ia$1(dd,c,d,"TestLoadImage: error",!1,b);d.onabort=ia$1(dd,c,d,"TestLoadImage: abort",!1,b);d.ontimeout=ia$1(dd,c,d,"TestLoadImage: timeout",!1,b);l$1.setTimeout(function(){if(d.ontimeout)d.ontimeout();},1E4);d.src=a;}else b(!1);}function dd(a,b,c,d,e){try{b.onload=null,b.onerror=null,b.onabort=null,b.ontimeout=null,e(d);}catch(f){}}function ed(a){this.l=a.ac||null;this.j=a.jb||!1;}t$1(ed,Sb);ed.prototype.g=function(){return new fd(this.l,this.j)};ed.prototype.i=function(a){return function(){return a}}({});function fd(a,b){B$1.call(this);this.D=a;this.u=b;this.m=void 0;this.readyState=gd;this.status=0;this.responseType=this.responseText=this.response=this.statusText="";this.onreadystatechange=null;this.v=new Headers;this.h=null;this.C="GET";this.B="";this.g=!1;this.A=this.j=this.l=null;}t$1(fd,B$1);var gd=0;k$2=fd.prototype;
+function Qc$1(a,b){b&&!a.j&&(U$1(a),a.i=null,a.g.forEach(function(c,d){var e=d.toLowerCase();d!=e&&(Tc$1(this,d),fc$1(this,e,c));},a));a.j=b;}var Vc$1=class{constructor(a,b){this.h=a;this.g=b;}};function Wc$1(a){this.l=a||Xc$1;l$1.PerformanceNavigationTiming?(a=l$1.performance.getEntriesByType("navigation"),a=0<a.length&&("hq"==a[0].nextHopProtocol||"h2"==a[0].nextHopProtocol)):a=!!(l$1.g&&l$1.g.Ga&&l$1.g.Ga()&&l$1.g.Ga().$b);this.j=a?this.l:1;this.g=null;1<this.j&&(this.g=new Set);this.h=null;this.i=[];}var Xc$1=10;function Yc$1(a){return a.h?!0:a.g?a.g.size>=a.j:!1}function uc$1(a){return a.h?1:a.g?a.g.size:0}function qc$1(a,b){return a.h?a.h==b:a.g?a.g.has(b):!1}function vc$1(a,b){a.g?a.g.add(b):a.h=b;}
+function xc$1(a,b){a.h&&a.h==b?a.h=null:a.g&&a.g.has(b)&&a.g.delete(b);}Wc$1.prototype.cancel=function(){this.i=Zc$1(this);if(this.h)this.h.cancel(),this.h=null;else if(this.g&&0!==this.g.size){for(const a of this.g.values())a.cancel();this.g.clear();}};function Zc$1(a){if(null!=a.h)return a.i.concat(a.h.D);if(null!=a.g&&0!==a.g.size){let b=a.i;for(const c of a.g.values())b=b.concat(c.D);return b}return ma$1(a.i)}function $c$1(){}$c$1.prototype.stringify=function(a){return l$1.JSON.stringify(a,void 0)};$c$1.prototype.parse=function(a){return l$1.JSON.parse(a,void 0)};function ad(){this.g=new $c$1;}function bd(a,b,c){const d=c||"";try{Dc$1(a,function(e,f){let h=e;p$1(e)&&(h=lb(e));b.push(d+f+"="+encodeURIComponent(h));});}catch(e){throw b.push(d+"type="+encodeURIComponent("_badmap")),e;}}function cd(a,b){const c=new Gb;if(l$1.Image){const d=new Image;d.onload=ia$1(dd,c,d,"TestLoadImage: loaded",!0,b);d.onerror=ia$1(dd,c,d,"TestLoadImage: error",!1,b);d.onabort=ia$1(dd,c,d,"TestLoadImage: abort",!1,b);d.ontimeout=ia$1(dd,c,d,"TestLoadImage: timeout",!1,b);l$1.setTimeout(function(){if(d.ontimeout)d.ontimeout();},1E4);d.src=a;}else b(!1);}function dd(a,b,c,d,e){try{b.onload=null,b.onerror=null,b.onabort=null,b.ontimeout=null,e(d);}catch(f){}}function ed(a){this.l=a.ac||null;this.j=a.jb||!1;}t$1(ed,Sb);ed.prototype.g=function(){return new fd(this.l,this.j)};ed.prototype.i=function(a){return function(){return a}}({});function fd(a,b){B$1.call(this);this.D=a;this.u=b;this.m=void 0;this.readyState=gd;this.status=0;this.responseType=this.responseText=this.response=this.statusText="";this.onreadystatechange=null;this.v=new Headers;this.h=null;this.C="GET";this.B="";this.g=!1;this.A=this.j=this.l=null;}t$1(fd,B$1);var gd=0;k$2=fd.prototype;
 k$2.open=function(a,b){if(this.readyState!=gd)throw this.abort(),Error("Error reopening a connection");this.C=a;this.B=b;this.readyState=1;hd(this);};k$2.send=function(a){if(1!=this.readyState)throw this.abort(),Error("need to call open() first. ");this.g=!0;const b={headers:this.v,method:this.C,credentials:this.m,cache:void 0};a&&(b.body=a);(this.D||l$1).fetch(new Request(this.B,b)).then(this.Wa.bind(this),this.ga.bind(this));};
 k$2.abort=function(){this.response=this.responseText="";this.v=new Headers;this.status=0;this.j&&this.j.cancel("Request was aborted.").catch(()=>{});1<=this.readyState&&this.g&&4!=this.readyState&&(this.g=!1,id(this));this.readyState=gd;};
 k$2.Wa=function(a){if(this.g&&(this.l=a,this.h||(this.status=this.l.status,this.statusText=this.l.statusText,this.h=a.headers,this.readyState=2,hd(this)),this.g&&(this.readyState=3,hd(this),this.g)))if("arraybuffer"===this.responseType)a.arrayBuffer().then(this.Ua.bind(this),this.ga.bind(this));else if("undefined"!==typeof l$1.ReadableStream&&"body"in a){this.j=a.body.getReader();if(this.u){if(this.responseType)throw Error('responseType must be empty for "streamBinaryChunks" mode responses.');this.response=
@@ -8715,26 +13831,26 @@ k$2.Wa=function(a){if(this.g&&(this.l=a,this.h||(this.status=this.l.status,this.
 k$2.Va=function(a){this.g&&(this.response=this.responseText=a,id(this));};k$2.Ua=function(a){this.g&&(this.response=a,id(this));};k$2.ga=function(){this.g&&id(this);};function id(a){a.readyState=4;a.l=null;a.j=null;a.A=null;hd(a);}k$2.setRequestHeader=function(a,b){this.v.append(a,b);};k$2.getResponseHeader=function(a){return this.h?this.h.get(a.toLowerCase())||"":""};
 k$2.getAllResponseHeaders=function(){if(!this.h)return "";const a=[],b=this.h.entries();for(var c=b.next();!c.done;)c=c.value,a.push(c[0]+": "+c[1]),c=b.next();return a.join("\r\n")};function hd(a){a.onreadystatechange&&a.onreadystatechange.call(a);}Object.defineProperty(fd.prototype,"withCredentials",{get:function(){return "include"===this.m},set:function(a){this.m=a?"include":"same-origin";}});var kd=l$1.JSON.parse;function W$1(a){B$1.call(this);this.headers=new Map;this.u=a||null;this.h=!1;this.C=this.g=null;this.H="";this.m=0;this.j="";this.l=this.F=this.v=this.D=!1;this.B=0;this.A=null;this.J=ld;this.K=this.L=!1;}t$1(W$1,B$1);var ld="",md=/^https?$/i,nd=["POST","PUT"];k$2=W$1.prototype;k$2.Ka=function(a){this.L=a;};
 k$2.da=function(a,b,c,d){if(this.g)throw Error("[goog.net.XhrIo] Object is active with another request="+this.H+"; newUri="+a);b=b?b.toUpperCase():"GET";this.H=a;this.j="";this.m=0;this.D=!1;this.h=!0;this.g=this.u?this.u.g():Xb.g();this.C=this.u?Tb(this.u):Tb(Xb);this.g.onreadystatechange=q$1(this.Ha,this);try{this.F=!0,this.g.open(b,String(a),!0),this.F=!1;}catch(f){od(this,f);return}a=c||"";c=new Map(this.headers);if(d)if(Object.getPrototypeOf(d)===Object.prototype)for(var e in d)c.set(e,d[e]);else if("function"===
-typeof d.keys&&"function"===typeof d.get)for(const f of d.keys())c.set(f,d.get(f));else throw Error("Unknown input type for opt_headers: "+String(d));d=Array.from(c.keys()).find(f=>"content-type"==f.toLowerCase());e=l$1.FormData&&a instanceof l$1.FormData;!(0<=la(nd,b))||d||e||c.set("Content-Type","application/x-www-form-urlencoded;charset=utf-8");for(const [f,h]of c)this.g.setRequestHeader(f,h);this.J&&(this.g.responseType=this.J);"withCredentials"in this.g&&this.g.withCredentials!==this.L&&(this.g.withCredentials=
+typeof d.keys&&"function"===typeof d.get)for(const f of d.keys())c.set(f,d.get(f));else throw Error("Unknown input type for opt_headers: "+String(d));d=Array.from(c.keys()).find(f=>"content-type"==f.toLowerCase());e=l$1.FormData&&a instanceof l$1.FormData;!(0<=la$1(nd,b))||d||e||c.set("Content-Type","application/x-www-form-urlencoded;charset=utf-8");for(const [f,h]of c)this.g.setRequestHeader(f,h);this.J&&(this.g.responseType=this.J);"withCredentials"in this.g&&this.g.withCredentials!==this.L&&(this.g.withCredentials=
 this.L);try{pd(this),0<this.B&&((this.K=qd(this.g))?(this.g.timeout=this.B,this.g.ontimeout=q$1(this.qa,this)):this.A=Ab(this.qa,this.B,this)),this.v=!0,this.g.send(a),this.v=!1;}catch(f){od(this,f);}};function qd(a){return y$1&&Ia$1()&&"number"===typeof a.timeout&&void 0!==a.ontimeout}k$2.qa=function(){"undefined"!=typeof goog&&this.g&&(this.j="Timed out after "+this.B+"ms, aborting",this.m=8,C$2(this,"timeout"),this.abort(8));};
 function od(a,b){a.h=!1;a.g&&(a.l=!0,a.g.abort(),a.l=!1);a.j=b;a.m=5;rd(a);sd(a);}function rd(a){a.D||(a.D=!0,C$2(a,"complete"),C$2(a,"error"));}k$2.abort=function(a){this.g&&this.h&&(this.h=!1,this.l=!0,this.g.abort(),this.l=!1,this.m=a||7,C$2(this,"complete"),C$2(this,"abort"),sd(this));};k$2.M=function(){this.g&&(this.h&&(this.h=!1,this.l=!0,this.g.abort(),this.l=!1),sd(this,!0));W$1.X.M.call(this);};k$2.Ha=function(){this.s||(this.F||this.v||this.l?td(this):this.fb());};k$2.fb=function(){td(this);};
-function td(a){if(a.h&&"undefined"!=typeof goog&&(!a.C[1]||4!=O$1(a)||2!=a.aa()))if(a.v&&4==O$1(a))Ab(a.Ha,0,a);else if(C$2(a,"readystatechange"),4==O$1(a)){a.h=!1;try{const n=a.aa();a:switch(n){case 200:case 201:case 202:case 204:case 206:case 304:case 1223:var b=!0;break a;default:b=!1;}var c;if(!(c=b)){var d;if(d=0===n){var e=String(a.H).match(Ec)[1]||null;if(!e&&l$1.self&&l$1.self.location){var f=l$1.self.location.protocol;e=f.substr(0,f.length-1);}d=!md.test(e?e.toLowerCase():"");}c=d;}if(c)C$2(a,"complete"),C$2(a,
-"success");else {a.m=6;try{var h=2<O$1(a)?a.g.statusText:"";}catch(u){h="";}a.j=h+" ["+a.aa()+"]";rd(a);}}finally{sd(a);}}}function sd(a,b){if(a.g){pd(a);const c=a.g,d=a.C[0]?aa:null;a.g=null;a.C=null;b||C$2(a,"ready");try{c.onreadystatechange=d;}catch(e){}}}function pd(a){a.g&&a.K&&(a.g.ontimeout=null);a.A&&(l$1.clearTimeout(a.A),a.A=null);}function O$1(a){return a.g?a.g.readyState:0}k$2.aa=function(){try{return 2<O$1(this)?this.g.status:-1}catch(a){return -1}};
+function td(a){if(a.h&&"undefined"!=typeof goog&&(!a.C[1]||4!=O$1(a)||2!=a.aa()))if(a.v&&4==O$1(a))Ab(a.Ha,0,a);else if(C$2(a,"readystatechange"),4==O$1(a)){a.h=!1;try{const n=a.aa();a:switch(n){case 200:case 201:case 202:case 204:case 206:case 304:case 1223:var b=!0;break a;default:b=!1;}var c;if(!(c=b)){var d;if(d=0===n){var e=String(a.H).match(Ec$1)[1]||null;if(!e&&l$1.self&&l$1.self.location){var f=l$1.self.location.protocol;e=f.substr(0,f.length-1);}d=!md.test(e?e.toLowerCase():"");}c=d;}if(c)C$2(a,"complete"),C$2(a,
+"success");else {a.m=6;try{var h=2<O$1(a)?a.g.statusText:"";}catch(u){h="";}a.j=h+" ["+a.aa()+"]";rd(a);}}finally{sd(a);}}}function sd(a,b){if(a.g){pd(a);const c=a.g,d=a.C[0]?aa$1:null;a.g=null;a.C=null;b||C$2(a,"ready");try{c.onreadystatechange=d;}catch(e){}}}function pd(a){a.g&&a.K&&(a.g.ontimeout=null);a.A&&(l$1.clearTimeout(a.A),a.A=null);}function O$1(a){return a.g?a.g.readyState:0}k$2.aa=function(){try{return 2<O$1(this)?this.g.status:-1}catch(a){return -1}};
 k$2.fa=function(){try{return this.g?this.g.responseText:""}catch(a){return ""}};k$2.Sa=function(a){if(this.g){var b=this.g.responseText;a&&0==b.indexOf(a)&&(b=b.substring(a.length));return kd(b)}};function hc$1(a){try{if(!a.g)return null;if("response"in a.g)return a.g.response;switch(a.J){case ld:case "text":return a.g.responseText;case "arraybuffer":if("mozResponseArrayBuffer"in a.g)return a.g.mozResponseArrayBuffer}return null}catch(b){return null}}k$2.Ea=function(){return this.m};
 k$2.Oa=function(){return "string"===typeof this.j?this.j:String(this.j)};function ud(a){let b="";Qa$1(a,function(c,d){b+=d;b+=":";b+=c;b+="\r\n";});return b}function vd(a,b,c){a:{for(d in c){var d=!1;break a}d=!0;}d||(c=ud(c),"string"===typeof a?(null!=c&&encodeURIComponent(String(c))):S$2(a,b,c));}function wd(a,b,c){return c&&c.internalChannelParams?c.internalChannelParams[a]||b:b}
 function xd(a){this.Ca=0;this.i=[];this.j=new Gb;this.ka=this.sa=this.F=this.V=this.g=this.za=this.D=this.ia=this.o=this.S=this.s=null;this.ab=this.U=0;this.Za=wd("failFast",!1,a);this.L=this.v=this.u=this.m=this.l=null;this.Y=!0;this.pa=this.Ba=this.T=-1;this.Z=this.A=this.C=0;this.Xa=wd("baseRetryDelayMs",5E3,a);this.bb=wd("retryDelaySeedMs",1E4,a);this.$a=wd("forwardChannelMaxRetries",2,a);this.ta=wd("forwardChannelRequestTimeoutMs",2E4,a);this.ra=a&&a.xmlHttpFactory||void 0;this.Da=a&&a.Zb||!1;
 this.J=void 0;this.H=a&&a.supportsCrossDomainXhr||!1;this.I="";this.h=new Wc$1(a&&a.concurrentRequestLimit);this.Fa=new ad;this.O=a&&a.fastHandshake||!1;this.N=a&&a.encodeInitMessageHeaders||!1;this.O&&this.N&&(this.N=!1);this.Ya=a&&a.Xb||!1;a&&a.Aa&&this.j.Aa();a&&a.forceLongPolling&&(this.Y=!1);this.$=!this.O&&this.Y&&a&&a.detectBufferingProxy||!1;this.ja=void 0;this.P=0;this.K=!1;this.la=this.B=null;}k$2=xd.prototype;k$2.ma=8;k$2.G=1;
-function Ac$1(a){yd(a);if(3==a.G){var b=a.U++,c=M$2(a.F);S$2(c,"SID",a.I);S$2(c,"RID",b);S$2(c,"TYPE","terminate");zd(a,c);b=new L$1(a,a.j,b,void 0);b.K=2;b.v=dc$1(M$2(c));c=!1;l$1.navigator&&l$1.navigator.sendBeacon&&(c=l$1.navigator.sendBeacon(b.v.toString(),""));!c&&l$1.Image&&((new Image).src=b.v,c=!0);c||(b.g=gc$1(b.l,null),b.g.da(b.v));b.F=Date.now();N$2(b);}Ad(a);}function sc$1(a){a.g&&(oc$1(a),a.g.cancel(),a.g=null);}
-function yd(a){sc$1(a);a.u&&(l$1.clearTimeout(a.u),a.u=null);rc$1(a);a.h.cancel();a.m&&("number"===typeof a.m&&l$1.clearTimeout(a.m),a.m=null);}function zc$1(a){Yc(a.h)||a.m||(a.m=!0,sb(a.Ja,a),a.C=0);}function Bd(a,b){if(uc$1(a.h)>=a.h.j-(a.m?1:0))return !1;if(a.m)return a.i=b.D.concat(a.i),!0;if(1==a.G||2==a.G||a.C>=(a.Za?0:a.$a))return !1;a.m=J(q$1(a.Ja,a,b),Cd(a,a.C));a.C++;return !0}
-k$2.Ja=function(a){if(this.m)if(this.m=null,1==this.G){if(!a){this.U=Math.floor(1E5*Math.random());a=this.U++;const e=new L$1(this,this.j,a,void 0);let f=this.s;this.S&&(f?(f=Ra$1(f),Ta(f,this.S)):f=this.S);null!==this.o||this.N||(e.H=f,f=null);if(this.O)a:{var b=0;for(var c=0;c<this.i.length;c++){b:{var d=this.i[c];if("__data__"in d.g&&(d=d.g.__data__,"string"===typeof d)){d=d.length;break b}d=void 0;}if(void 0===d)break;b+=d;if(4096<b){b=c;break a}if(4096===b||c===this.i.length-1){b=c+1;break a}}b=1E3;}else b=
-1E3;b=Dd(this,e,b);c=M$2(this.F);S$2(c,"RID",a);S$2(c,"CVER",22);this.D&&S$2(c,"X-HTTP-Session-Id",this.D);zd(this,c);f&&(this.N?b="headers="+encodeURIComponent(String(ud(f)))+"&"+b:this.o&&vd(c,this.o,f));vc$1(this.h,e);this.Ya&&S$2(c,"TYPE","init");this.O?(S$2(c,"$req",b),S$2(c,"SID","null"),e.Z=!0,cc$1(e,c,null)):cc$1(e,c,b);this.G=2;}}else 3==this.G&&(a?Ed(this,a):0==this.i.length||Yc(this.h)||Ed(this));};
-function Ed(a,b){var c;b?c=b.m:c=a.U++;const d=M$2(a.F);S$2(d,"SID",a.I);S$2(d,"RID",c);S$2(d,"AID",a.T);zd(a,d);a.o&&a.s&&vd(d,a.o,a.s);c=new L$1(a,a.j,c,a.C+1);null===a.o&&(c.H=a.s);b&&(a.i=b.D.concat(a.i));b=Dd(a,c,1E3);c.setTimeout(Math.round(.5*a.ta)+Math.round(.5*a.ta*Math.random()));vc$1(a.h,c);cc$1(c,d,b);}function zd(a,b){a.ia&&Qa$1(a.ia,function(c,d){S$2(b,d,c);});a.l&&Dc$1({},function(c,d){S$2(b,d,c);});}
+function Ac$1(a){yd(a);if(3==a.G){var b=a.U++,c=M$2(a.F);S$2(c,"SID",a.I);S$2(c,"RID",b);S$2(c,"TYPE","terminate");zd(a,c);b=new L$2(a,a.j,b,void 0);b.K=2;b.v=dc$1(M$2(c));c=!1;l$1.navigator&&l$1.navigator.sendBeacon&&(c=l$1.navigator.sendBeacon(b.v.toString(),""));!c&&l$1.Image&&((new Image).src=b.v,c=!0);c||(b.g=gc$1(b.l,null),b.g.da(b.v));b.F=Date.now();N$2(b);}Ad(a);}function sc$1(a){a.g&&(oc$1(a),a.g.cancel(),a.g=null);}
+function yd(a){sc$1(a);a.u&&(l$1.clearTimeout(a.u),a.u=null);rc$1(a);a.h.cancel();a.m&&("number"===typeof a.m&&l$1.clearTimeout(a.m),a.m=null);}function zc$1(a){Yc$1(a.h)||a.m||(a.m=!0,sb(a.Ja,a),a.C=0);}function Bd(a,b){if(uc$1(a.h)>=a.h.j-(a.m?1:0))return !1;if(a.m)return a.i=b.D.concat(a.i),!0;if(1==a.G||2==a.G||a.C>=(a.Za?0:a.$a))return !1;a.m=J$1(q$1(a.Ja,a,b),Cd(a,a.C));a.C++;return !0}
+k$2.Ja=function(a){if(this.m)if(this.m=null,1==this.G){if(!a){this.U=Math.floor(1E5*Math.random());a=this.U++;const e=new L$2(this,this.j,a,void 0);let f=this.s;this.S&&(f?(f=Ra$1(f),Ta$1(f,this.S)):f=this.S);null!==this.o||this.N||(e.H=f,f=null);if(this.O)a:{var b=0;for(var c=0;c<this.i.length;c++){b:{var d=this.i[c];if("__data__"in d.g&&(d=d.g.__data__,"string"===typeof d)){d=d.length;break b}d=void 0;}if(void 0===d)break;b+=d;if(4096<b){b=c;break a}if(4096===b||c===this.i.length-1){b=c+1;break a}}b=1E3;}else b=
+1E3;b=Dd(this,e,b);c=M$2(this.F);S$2(c,"RID",a);S$2(c,"CVER",22);this.D&&S$2(c,"X-HTTP-Session-Id",this.D);zd(this,c);f&&(this.N?b="headers="+encodeURIComponent(String(ud(f)))+"&"+b:this.o&&vd(c,this.o,f));vc$1(this.h,e);this.Ya&&S$2(c,"TYPE","init");this.O?(S$2(c,"$req",b),S$2(c,"SID","null"),e.Z=!0,cc$1(e,c,null)):cc$1(e,c,b);this.G=2;}}else 3==this.G&&(a?Ed(this,a):0==this.i.length||Yc$1(this.h)||Ed(this));};
+function Ed(a,b){var c;b?c=b.m:c=a.U++;const d=M$2(a.F);S$2(d,"SID",a.I);S$2(d,"RID",c);S$2(d,"AID",a.T);zd(a,d);a.o&&a.s&&vd(d,a.o,a.s);c=new L$2(a,a.j,c,a.C+1);null===a.o&&(c.H=a.s);b&&(a.i=b.D.concat(a.i));b=Dd(a,c,1E3);c.setTimeout(Math.round(.5*a.ta)+Math.round(.5*a.ta*Math.random()));vc$1(a.h,c);cc$1(c,d,b);}function zd(a,b){a.ia&&Qa$1(a.ia,function(c,d){S$2(b,d,c);});a.l&&Dc$1({},function(c,d){S$2(b,d,c);});}
 function Dd(a,b,c){c=Math.min(a.i.length,c);var d=a.l?q$1(a.l.Ra,a.l,a):null;a:{var e=a.i;let f=-1;for(;;){const h=["count="+c];-1==f?0<c?(f=e[0].h,h.push("ofs="+f)):f=0:h.push("ofs="+f);let n=!0;for(let u=0;u<c;u++){let m=e[u].h;const r=e[u].g;m-=f;if(0>m)f=Math.max(0,e[u].h-100),n=!1;else try{bd(r,h,"req"+m+"_");}catch(F){d&&d(r);}}if(n){d=h.join("&");break a}}}a=a.i.splice(0,c);b.D=a;return d}function yc$1(a){a.g||a.u||(a.Z=1,sb(a.Ia,a),a.A=0);}
-function tc$1(a){if(a.g||a.u||3<=a.A)return !1;a.Z++;a.u=J(q$1(a.Ia,a),Cd(a,a.A));a.A++;return !0}k$2.Ia=function(){this.u=null;Fd(this);if(this.$&&!(this.K||null==this.g||0>=this.P)){var a=2*this.P;this.j.info("BP detection timer enabled: "+a);this.B=J(q$1(this.eb,this),a);}};k$2.eb=function(){this.B&&(this.B=null,this.j.info("BP detection timeout reached."),this.j.info("Buffering proxy detected and switch to long-polling!"),this.L=!1,this.K=!0,I$1(10),sc$1(this),Fd(this));};
-function oc$1(a){null!=a.B&&(l$1.clearTimeout(a.B),a.B=null);}function Fd(a){a.g=new L$1(a,a.j,"rpc",a.Z);null===a.o&&(a.g.H=a.s);a.g.N=0;var b=M$2(a.sa);S$2(b,"RID","rpc");S$2(b,"SID",a.I);S$2(b,"CI",a.L?"0":"1");S$2(b,"AID",a.T);S$2(b,"TYPE","xmlhttp");zd(a,b);a.o&&a.s&&vd(b,a.o,a.s);a.J&&a.g.setTimeout(a.J);var c=a.g;a=a.ka;c.K=1;c.v=dc$1(M$2(b));c.s=null;c.P=!0;ec$1(c,a);}k$2.cb=function(){null!=this.v&&(this.v=null,sc$1(this),tc$1(this),I$1(19));};function rc$1(a){null!=a.v&&(l$1.clearTimeout(a.v),a.v=null);}
+function tc$1(a){if(a.g||a.u||3<=a.A)return !1;a.Z++;a.u=J$1(q$1(a.Ia,a),Cd(a,a.A));a.A++;return !0}k$2.Ia=function(){this.u=null;Fd(this);if(this.$&&!(this.K||null==this.g||0>=this.P)){var a=2*this.P;this.j.info("BP detection timer enabled: "+a);this.B=J$1(q$1(this.eb,this),a);}};k$2.eb=function(){this.B&&(this.B=null,this.j.info("BP detection timeout reached."),this.j.info("Buffering proxy detected and switch to long-polling!"),this.L=!1,this.K=!0,I$1(10),sc$1(this),Fd(this));};
+function oc$1(a){null!=a.B&&(l$1.clearTimeout(a.B),a.B=null);}function Fd(a){a.g=new L$2(a,a.j,"rpc",a.Z);null===a.o&&(a.g.H=a.s);a.g.N=0;var b=M$2(a.sa);S$2(b,"RID","rpc");S$2(b,"SID",a.I);S$2(b,"CI",a.L?"0":"1");S$2(b,"AID",a.T);S$2(b,"TYPE","xmlhttp");zd(a,b);a.o&&a.s&&vd(b,a.o,a.s);a.J&&a.g.setTimeout(a.J);var c=a.g;a=a.ka;c.K=1;c.v=dc$1(M$2(b));c.s=null;c.P=!0;ec$1(c,a);}k$2.cb=function(){null!=this.v&&(this.v=null,sc$1(this),tc$1(this),I$1(19));};function rc$1(a){null!=a.v&&(l$1.clearTimeout(a.v),a.v=null);}
 function mc$1(a,b){var c=null;if(a.g==b){rc$1(a);oc$1(a);a.g=null;var d=2;}else if(qc$1(a.h,b))c=b.D,xc$1(a.h,b),d=1;else return;if(0!=a.G)if(a.pa=b.Y,b.i)if(1==d){c=b.s?b.s.length:0;b=Date.now()-b.F;var e=a.C;d=Mb();C$2(d,new Pb(d,c));zc$1(a);}else yc$1(a);else if(e=b.o,3==e||0==e&&0<a.pa||!(1==d&&Bd(a,b)||2==d&&tc$1(a)))switch(c&&0<c.length&&(b=a.h,b.i=b.i.concat(c)),e){case 1:R$1(a,5);break;case 4:R$1(a,10);break;case 3:R$1(a,6);break;default:R$1(a,2);}}
 function Cd(a,b){let c=a.Xa+Math.floor(Math.random()*a.bb);a.l||(c*=2);return c*b}function R$1(a,b){a.j.info("Error code "+b);if(2==b){var c=null;a.l&&(c=null);var d=q$1(a.kb,a);c||(c=new T$1("//www.google.com/images/cleardot.gif"),l$1.location&&"http"==l$1.location.protocol||Gc$1(c,"https"),dc$1(c));cd(c.toString(),d);}else I$1(2);a.G=0;a.l&&a.l.va(b);Ad(a);yd(a);}k$2.kb=function(a){a?(this.j.info("Successfully pinged google.com"),I$1(2)):(this.j.info("Failed to ping google.com"),I$1(1));};
-function Ad(a){a.G=0;a.la=[];if(a.l){const b=Zc(a.h);if(0!=b.length||0!=a.i.length)na(a.la,b),na(a.la,a.i),a.h.i.length=0,ma$1(a.i),a.i.length=0;a.l.ua();}}function wc$1(a,b,c){var d=c instanceof T$1?M$2(c):new T$1(c,void 0);if(""!=d.g)b&&(d.g=b+"."+d.g),Hc(d,d.m);else {var e=l$1.location;d=e.protocol;b=b?b+"."+e.hostname:e.hostname;e=+e.port;var f=new T$1(null,void 0);d&&Gc$1(f,d);b&&(f.g=b);e&&Hc(f,e);c&&(f.l=c);d=f;}c=a.D;b=a.za;c&&b&&S$2(d,c,b);S$2(d,"VER",a.ma);zd(a,d);return d}
+function Ad(a){a.G=0;a.la=[];if(a.l){const b=Zc$1(a.h);if(0!=b.length||0!=a.i.length)na$1(a.la,b),na$1(a.la,a.i),a.h.i.length=0,ma$1(a.i),a.i.length=0;a.l.ua();}}function wc$1(a,b,c){var d=c instanceof T$1?M$2(c):new T$1(c,void 0);if(""!=d.g)b&&(d.g=b+"."+d.g),Hc$1(d,d.m);else {var e=l$1.location;d=e.protocol;b=b?b+"."+e.hostname:e.hostname;e=+e.port;var f=new T$1(null,void 0);d&&Gc$1(f,d);b&&(f.g=b);e&&Hc$1(f,e);c&&(f.l=c);d=f;}c=a.D;b=a.za;c&&b&&S$2(d,c,b);S$2(d,"VER",a.ma);zd(a,d);return d}
 function gc$1(a,b,c){if(b&&!a.H)throw Error("Can't create secondary domain capable XhrIo object.");b=c&&a.Da&&!a.ra?new W$1(new ed({jb:!0})):new W$1(a.ra);b.Ka(a.H);return b}function Gd(){}k$2=Gd.prototype;k$2.xa=function(){};k$2.wa=function(){};k$2.va=function(){};k$2.ua=function(){};k$2.Ra=function(){};function Hd(){if(y$1&&!(10<=Number(La$1)))throw Error("Environmental error: no available transport.");}Hd.prototype.g=function(a,b){return new X$1(a,b)};
 function X$1(a,b){B$1.call(this);this.g=new xd(b);this.l=a;this.h=b&&b.messageUrlParams||null;a=b&&b.messageHeaders||null;b&&b.clientProtocolHeaderRequired&&(a?a["X-Client-Protocol"]="webchannel":a={"X-Client-Protocol":"webchannel"});this.g.s=a;a=b&&b.initMessageHeaders||null;b&&b.messageContentType&&(a?a["X-WebChannel-Content-Type"]=b.messageContentType:a={"X-WebChannel-Content-Type":b.messageContentType});b&&b.ya&&(a?a["X-WebChannel-Client-Profile"]=b.ya:a={"X-WebChannel-Client-Profile":b.ya});this.g.S=
 a;(a=b&&b.Yb)&&!pa$1(a)&&(this.g.o=a);this.A=b&&b.supportsCrossDomainXhr||!1;this.v=b&&b.sendRawJson||!1;(b=b&&b.httpSessionIdParam)&&!pa$1(b)&&(this.g.D=b,a=this.h,null!==a&&b in a&&(a=this.h,b in a&&delete a[b]));this.j=new Y$1(this);}t$1(X$1,B$1);X$1.prototype.m=function(){this.g.l=this.j;this.A&&(this.g.H=!0);var a=this.g,b=this.l,c=this.h||void 0;I$1(0);a.V=b;a.ia=c||{};a.L=a.Y;a.F=wc$1(a,null,a.V);zc$1(a);};X$1.prototype.close=function(){Ac$1(this.g);};
@@ -8756,8 +13872,8 @@ function Y$1(a){this.g=a;}t$1(Y$1,Gd);Y$1.prototype.xa=function(){C$2(this.g,"a"
  limitations under the License.
 */
 Hd.prototype.createWebChannel=Hd.prototype.g;X$1.prototype.send=X$1.prototype.u;X$1.prototype.open=X$1.prototype.m;X$1.prototype.close=X$1.prototype.close;Qb.NO_ERROR=0;Qb.TIMEOUT=8;Qb.HTTP_ERROR=6;Rb.COMPLETE="complete";Ub.EventType=K$1;K$1.OPEN="a";K$1.CLOSE="b";K$1.ERROR="c";K$1.MESSAGE="d";B$1.prototype.listen=B$1.prototype.N;W$1.prototype.listenOnce=W$1.prototype.O;W$1.prototype.getLastError=W$1.prototype.Oa;W$1.prototype.getLastErrorCode=W$1.prototype.Ea;W$1.prototype.getStatus=W$1.prototype.aa;W$1.prototype.getResponseJson=W$1.prototype.Sa;
-W$1.prototype.getResponseText=W$1.prototype.fa;W$1.prototype.send=W$1.prototype.da;W$1.prototype.setWithCredentials=W$1.prototype.Ka;var createWebChannelTransport = function(){return new Hd};var getStatEventTarget = function(){return Mb()};var ErrorCode = Qb;var EventType = Rb;var Event = G$1;var Stat = {sb:0,vb:1,wb:2,Pb:3,Ub:4,Rb:5,Sb:6,Qb:7,Ob:8,Tb:9,PROXY:10,NOPROXY:11,Mb:12,Ib:13,Jb:14,Hb:15,Kb:16,Lb:17,ob:18,nb:19,pb:20};
-var FetchXmlHttpFactory = ed;var WebChannel = Ub;var XhrIo = W$1;
+W$1.prototype.getResponseText=W$1.prototype.fa;W$1.prototype.send=W$1.prototype.da;W$1.prototype.setWithCredentials=W$1.prototype.Ka;var createWebChannelTransport = esm.createWebChannelTransport=function(){return new Hd};var getStatEventTarget = esm.getStatEventTarget=function(){return Mb()};var ErrorCode = esm.ErrorCode=Qb;var EventType = esm.EventType=Rb;var Event = esm.Event=G$1;var Stat = esm.Stat={sb:0,vb:1,wb:2,Pb:3,Ub:4,Rb:5,Sb:6,Qb:7,Ob:8,Tb:9,PROXY:10,NOPROXY:11,Mb:12,Ib:13,Jb:14,Hb:15,Kb:16,Lb:17,ob:18,nb:19,pb:20};
+var FetchXmlHttpFactory = esm.FetchXmlHttpFactory=ed;var WebChannel = esm.WebChannel=Ub;var XhrIo = esm.XhrIo=W$1;
 
 const b$1 = "@firebase/firestore";
 
@@ -8844,6 +13960,22 @@ const V$1 = new Logger("@firebase/firestore");
 // Helper methods are needed because variables can't be exported as read/write
 function S$1() {
     return V$1.logLevel;
+}
+
+/**
+ * Sets the verbosity of Cloud Firestore logs (debug, error, or silent).
+ *
+ * @param logLevel - The verbosity you set for activity and error logging. Can
+ *   be any of the following values:
+ *
+ *   <ul>
+ *     <li>`debug` for the most verbose logging level, primarily for
+ *     debugging.</li>
+ *     <li>`error` to log errors only.</li>
+ *     <li><code>`silent` to turn off logging.</li>
+ *   </ul>
+ */ function D(t) {
+    V$1.setLogLevel(t);
 }
 
 function C$1(t, ...e) {
@@ -8938,6 +14070,19 @@ function x$1(t, ...e) {
  *
  * Messages are stripped in production builds.
  */ function M$1(t, e) {
+    t || O();
+}
+
+/**
+ * Fails if the given assertion condition is false, throwing an Error with the
+ * given message if it did.
+ *
+ * The code of callsites invoking this function are stripped out in production
+ * builds. Any side-effects of code within the debugAssert() invocation will not
+ * happen in this case.
+ *
+ * @internal
+ */ function F(t, e) {
     t || O();
 }
 
@@ -9078,7 +14223,7 @@ e) {
     DATA_LOSS: "data-loss"
 };
 
-/** An error returned by a Firestore operation. */ class L extends FirebaseError {
+/** An error returned by a Firestore operation. */ class L$1 extends FirebaseError {
     /** @hideconstructor */
     constructor(
     /**
@@ -9352,6 +14497,18 @@ class H$1 {
 }
 
 /**
+ * An AppCheck token provider that always yields an empty token.
+ * @internal
+ */ class J {
+    getToken() {
+        return Promise.resolve(new W(""));
+    }
+    invalidateToken() {}
+    start(t, e) {}
+    shutdown() {}
+}
+
+/**
  * Builds a CredentialsProvider depending on the type of
  * the credentials passed in.
  */
@@ -9428,6 +14585,14 @@ function X(t, e) {
 }
 
 /**
+ * Returns the immediate lexicographically-following string. This is useful to
+ * construct an inclusive range for indexeddb iterators.
+ */ function et(t) {
+    // Return the input string, with an additional NUL byte appended.
+    return t + "\0";
+}
+
+/**
  * @license
  * Copyright 2017 Google LLC
  *
@@ -9479,11 +14644,11 @@ class nt {
      * The fractions of a second at nanosecond resolution.*
      */
     e) {
-        if (this.seconds = t, this.nanoseconds = e, e < 0) throw new L(B.INVALID_ARGUMENT, "Timestamp nanoseconds out of range: " + e);
-        if (e >= 1e9) throw new L(B.INVALID_ARGUMENT, "Timestamp nanoseconds out of range: " + e);
-        if (t < -62135596800) throw new L(B.INVALID_ARGUMENT, "Timestamp seconds out of range: " + t);
+        if (this.seconds = t, this.nanoseconds = e, e < 0) throw new L$1(B.INVALID_ARGUMENT, "Timestamp nanoseconds out of range: " + e);
+        if (e >= 1e9) throw new L$1(B.INVALID_ARGUMENT, "Timestamp nanoseconds out of range: " + e);
+        if (t < -62135596800) throw new L$1(B.INVALID_ARGUMENT, "Timestamp seconds out of range: " + t);
         // This will break in the year 10,000.
-                if (t >= 253402300800) throw new L(B.INVALID_ARGUMENT, "Timestamp seconds out of range: " + t);
+                if (t >= 253402300800) throw new L$1(B.INVALID_ARGUMENT, "Timestamp seconds out of range: " + t);
     }
     /**
      * Creates a new timestamp with the current date, with millisecond precision.
@@ -9731,7 +14896,7 @@ class it {
         // for legacy reasons and should not be used frequently).
         const e = [];
         for (const n of t) {
-            if (n.indexOf("//") >= 0) throw new L(B.INVALID_ARGUMENT, `Invalid segment (${n}). Paths must not contain // in them.`);
+            if (n.indexOf("//") >= 0) throw new L$1(B.INVALID_ARGUMENT, `Invalid segment (${n}). Paths must not contain // in them.`);
             // Strip leading and traling slashed.
                         e.push(...n.split("/").filter((t => t.length > 0)));
         }
@@ -9787,20 +14952,20 @@ const ot = /^[_a-zA-Z][_a-zA-Z0-9]*$/;
         const e = [];
         let n = "", s = 0;
         const i = () => {
-            if (0 === n.length) throw new L(B.INVALID_ARGUMENT, `Invalid field path (${t}). Paths must not be empty, begin with '.', end with '.', or contain '..'`);
+            if (0 === n.length) throw new L$1(B.INVALID_ARGUMENT, `Invalid field path (${t}). Paths must not be empty, begin with '.', end with '.', or contain '..'`);
             e.push(n), n = "";
         };
         let r = !1;
         for (;s < t.length; ) {
             const e = t[s];
             if ("\\" === e) {
-                if (s + 1 === t.length) throw new L(B.INVALID_ARGUMENT, "Path has trailing escape character: " + t);
+                if (s + 1 === t.length) throw new L$1(B.INVALID_ARGUMENT, "Path has trailing escape character: " + t);
                 const e = t[s + 1];
-                if ("\\" !== e && "." !== e && "`" !== e) throw new L(B.INVALID_ARGUMENT, "Path has invalid escape sequence: " + t);
+                if ("\\" !== e && "." !== e && "`" !== e) throw new L$1(B.INVALID_ARGUMENT, "Path has invalid escape sequence: " + t);
                 n += e, s += 2;
             } else "`" === e ? (r = !r, s++) : "." !== e || r ? (n += e, s++) : (i(), s++);
         }
-        if (i(), r) throw new L(B.INVALID_ARGUMENT, "Unterminated ` in path: " + t);
+        if (i(), r) throw new L$1(B.INVALID_ARGUMENT, "Unterminated ` in path: " + t);
         return new ut(e);
     }
     static emptyPath() {
@@ -9870,6 +15035,117 @@ const ot = /^[_a-zA-Z][_a-zA-Z0-9]*$/;
      * @returns A new instance of DocumentKey
      */    static fromSegments(t) {
         return new ct(new rt(t.slice()));
+    }
+}
+
+/**
+ * @license
+ * Copyright 2021 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * The initial mutation batch id for each index. Gets updated during index
+ * backfill.
+ */
+/**
+ * An index definition for field indexes in Firestore.
+ *
+ * Every index is associated with a collection. The definition contains a list
+ * of fields and their index kind (which can be `ASCENDING`, `DESCENDING` or
+ * `CONTAINS` for ArrayContains/ArrayContainsAny queries).
+ *
+ * Unlike the backend, the SDK does not differentiate between collection or
+ * collection group-scoped indices. Every index can be used for both single
+ * collection and collection group queries.
+ */
+class at {
+    constructor(
+    /**
+     * The index ID. Returns -1 if the index ID is not available (e.g. the index
+     * has not yet been persisted).
+     */
+    t, 
+    /** The collection ID this index applies to. */
+    e, 
+    /** The field segments for this index. */
+    n, 
+    /** Shows how up-to-date the index is for the current user. */
+    s) {
+        this.indexId = t, this.collectionGroup = e, this.fields = n, this.indexState = s;
+    }
+}
+
+/** An ID for an index that has not yet been added to persistence.  */
+/** Returns the ArrayContains/ArrayContainsAny segment for this index. */
+function ht(t) {
+    return t.fields.find((t => 2 /* IndexKind.CONTAINS */ === t.kind));
+}
+
+/** Returns all directional (ascending/descending) segments for this index. */ function lt(t) {
+    return t.fields.filter((t => 2 /* IndexKind.CONTAINS */ !== t.kind));
+}
+
+/**
+ * Returns the order of the document key component for the given index.
+ *
+ * PORTING NOTE: This is only used in the Web IndexedDb implementation.
+ */
+/**
+ * Compares indexes by collection group and segments. Ignores update time and
+ * index ID.
+ */
+function ft(t, e) {
+    let n = X(t.collectionGroup, e.collectionGroup);
+    if (0 !== n) return n;
+    for (let s = 0; s < Math.min(t.fields.length, e.fields.length); ++s) if (n = _t(t.fields[s], e.fields[s]), 
+    0 !== n) return n;
+    return X(t.fields.length, e.fields.length);
+}
+
+/** Returns a debug representation of the field index */ at.UNKNOWN_ID = -1;
+
+/** An index component consisting of field path and index type.  */
+class dt {
+    constructor(
+    /** The field path of the component. */
+    t, 
+    /** The fields sorting order. */
+    e) {
+        this.fieldPath = t, this.kind = e;
+    }
+}
+
+function _t(t, e) {
+    const n = ut.comparator(t.fieldPath, e.fieldPath);
+    return 0 !== n ? n : X(t.kind, e.kind);
+}
+
+/**
+ * Stores the "high water mark" that indicates how updated the Index is for the
+ * current user.
+ */ class wt {
+    constructor(
+    /**
+     * Indicates when the index was last updated (relative to other indexes).
+     */
+    t, 
+    /** The the latest indexed read time, document and batch id. */
+    e) {
+        this.sequenceNumber = t, this.offset = e;
+    }
+    /** The state of an index that has not yet been backfilled. */    static empty() {
+        return new wt(0, yt.min());
     }
 }
 
@@ -10138,10 +15414,524 @@ function pt(t, e) {
     }
 }
 
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+// References to `window` are guarded by SimpleDb.isAvailable()
+/* eslint-disable no-restricted-globals */
+/**
+ * Wraps an IDBTransaction and exposes a store() method to get a handle to a
+ * specific object store.
+ */
+class Rt {
+    constructor(t, e) {
+        this.action = t, this.transaction = e, this.aborted = !1, 
+        /**
+         * A `Promise` that resolves with the result of the IndexedDb transaction.
+         */
+        this.v = new q, this.transaction.oncomplete = () => {
+            this.v.resolve();
+        }, this.transaction.onabort = () => {
+            e.error ? this.v.reject(new Pt(t, e.error)) : this.v.resolve();
+        }, this.transaction.onerror = e => {
+            const n = xt(e.target.error);
+            this.v.reject(new Pt(t, n));
+        };
+    }
+    static open(t, e, n, s) {
+        try {
+            return new Rt(e, t.transaction(s, n));
+        } catch (t) {
+            throw new Pt(e, t);
+        }
+    }
+    get P() {
+        return this.v.promise;
+    }
+    abort(t) {
+        t && this.v.reject(t), this.aborted || (C$1("SimpleDb", "Aborting transaction:", t ? t.message : "Client-initiated abort"), 
+        this.aborted = !0, this.transaction.abort());
+    }
+    V() {
+        // If the browser supports V3 IndexedDB, we invoke commit() explicitly to
+        // speed up index DB processing if the event loop remains blocks.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const t = this.transaction;
+        this.aborted || "function" != typeof t.commit || t.commit();
+    }
+    /**
+     * Returns a SimpleDbStore<KeyType, ValueType> for the specified store. All
+     * operations performed on the SimpleDbStore happen within the context of this
+     * transaction and it cannot be used anymore once the transaction is
+     * completed.
+     *
+     * Note that we can't actually enforce that the KeyType and ValueType are
+     * correct, but they allow type safety through the rest of the consuming code.
+     */    store(t) {
+        const e = this.transaction.objectStore(t);
+        return new St(e);
+    }
+}
+
+/**
+ * Provides a wrapper around IndexedDb with a simplified interface that uses
+ * Promise-like return values to chain operations. Real promises cannot be used
+ * since .then() continuations are executed asynchronously (e.g. via
+ * .setImmediate), which would cause IndexedDB to end the transaction.
+ * See PersistencePromise for more details.
+ */ class bt {
+    /*
+     * Creates a new SimpleDb wrapper for IndexedDb database `name`.
+     *
+     * Note that `version` must not be a downgrade. IndexedDB does not support
+     * downgrading the schema version. We currently do not support any way to do
+     * versioning outside of IndexedDB's versioning mechanism, as only
+     * version-upgrade transactions are allowed to do things like create
+     * objectstores.
+     */
+    constructor(t, e, n) {
+        this.name = t, this.version = e, this.S = n;
+        // NOTE: According to https://bugs.webkit.org/show_bug.cgi?id=197050, the
+        // bug we're checking for should exist in iOS >= 12.2 and < 13, but for
+        // whatever reason it's much harder to hit after 12.2 so we only proactively
+        // log on 12.2.
+        12.2 === bt.D(getUA()) && x$1("Firestore persistence suffers from a bug in iOS 12.2 Safari that may cause your app to stop working. See https://stackoverflow.com/q/56496296/110915 for details and a potential workaround.");
+    }
+    /** Deletes the specified database. */    static delete(t) {
+        return C$1("SimpleDb", "Removing database:", t), Dt(window.indexedDB.deleteDatabase(t)).toPromise();
+    }
+    /** Returns true if IndexedDB is available in the current environment. */    static C() {
+        if (!isIndexedDBAvailable()) return !1;
+        if (bt.N()) return !0;
+        // We extensively use indexed array values and compound keys,
+        // which IE and Edge do not support. However, they still have indexedDB
+        // defined on the window, so we need to check for them here and make sure
+        // to return that persistence is not enabled for those browsers.
+        // For tracking support of this feature, see here:
+        // https://developer.microsoft.com/en-us/microsoft-edge/platform/status/indexeddbarraysandmultientrysupport/
+        // Check the UA string to find out the browser.
+                const t = getUA(), e = bt.D(t), n = 0 < e && e < 10, s = bt.k(t), i = 0 < s && s < 4.5;
+        // IE 10
+        // ua = 'Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.2; Trident/6.0)';
+        // IE 11
+        // ua = 'Mozilla/5.0 (Windows NT 6.3; Trident/7.0; rv:11.0) like Gecko';
+        // Edge
+        // ua = 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML,
+        // like Gecko) Chrome/39.0.2171.71 Safari/537.36 Edge/12.0';
+        // iOS Safari: Disable for users running iOS version < 10.
+                return !(t.indexOf("MSIE ") > 0 || t.indexOf("Trident/") > 0 || t.indexOf("Edge/") > 0 || n || i);
+    }
+    /**
+     * Returns true if the backing IndexedDB store is the Node IndexedDBShim
+     * (see https://github.com/axemclion/IndexedDBShim).
+     */    static N() {
+        var t;
+        return "undefined" != typeof process && "YES" === (null === (t = process.env) || void 0 === t ? void 0 : t.O);
+    }
+    /** Helper to get a typed SimpleDbStore from a transaction. */    static M(t, e) {
+        return t.store(e);
+    }
+    // visible for testing
+    /** Parse User Agent to determine iOS version. Returns -1 if not found. */
+    static D(t) {
+        const e = t.match(/i(?:phone|pad|pod) os ([\d_]+)/i), n = e ? e[1].split("_").slice(0, 2).join(".") : "-1";
+        return Number(n);
+    }
+    // visible for testing
+    /** Parse User Agent to determine Android version. Returns -1 if not found. */
+    static k(t) {
+        const e = t.match(/Android ([\d.]+)/i), n = e ? e[1].split(".").slice(0, 2).join(".") : "-1";
+        return Number(n);
+    }
+    /**
+     * Opens the specified database, creating or upgrading it if necessary.
+     */    async F(t) {
+        return this.db || (C$1("SimpleDb", "Opening database:", this.name), this.db = await new Promise(((e, n) => {
+            // TODO(mikelehen): Investigate browser compatibility.
+            // https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB
+            // suggests IE9 and older WebKit browsers handle upgrade
+            // differently. They expect setVersion, as described here:
+            // https://developer.mozilla.org/en-US/docs/Web/API/IDBVersionChangeRequest/setVersion
+            const s = indexedDB.open(this.name, this.version);
+            s.onsuccess = t => {
+                const n = t.target.result;
+                e(n);
+            }, s.onblocked = () => {
+                n(new Pt(t, "Cannot upgrade IndexedDB schema while another tab is open. Close all tabs that access Firestore and reload this page to proceed."));
+            }, s.onerror = e => {
+                const s = e.target.error;
+                "VersionError" === s.name ? n(new L$1(B.FAILED_PRECONDITION, "A newer version of the Firestore SDK was previously used and so the persisted data is not compatible with the version of the SDK you are now using. The SDK will operate with persistence disabled. If you need persistence, please re-upgrade to a newer version of the SDK or else clear the persisted IndexedDB data for your app to start fresh.")) : "InvalidStateError" === s.name ? n(new L$1(B.FAILED_PRECONDITION, "Unable to open an IndexedDB connection. This could be due to running in a private browsing session on a browser whose private browsing sessions do not support IndexedDB: " + s)) : n(new Pt(t, s));
+            }, s.onupgradeneeded = t => {
+                C$1("SimpleDb", 'Database "' + this.name + '" requires upgrade from version:', t.oldVersion);
+                const e = t.target.result;
+                this.S.$(e, s.transaction, t.oldVersion, this.version).next((() => {
+                    C$1("SimpleDb", "Database upgrade to version " + this.version + " complete");
+                }));
+            };
+        }))), this.B && (this.db.onversionchange = t => this.B(t)), this.db;
+    }
+    L(t) {
+        this.B = t, this.db && (this.db.onversionchange = e => t(e));
+    }
+    async runTransaction(t, e, n, s) {
+        const i = "readonly" === e;
+        let r = 0;
+        for (;;) {
+            ++r;
+            try {
+                this.db = await this.F(t);
+                const e = Rt.open(this.db, t, i ? "readonly" : "readwrite", n), r = s(e).next((t => (e.V(), 
+                t))).catch((t => (
+                // Abort the transaction if there was an error.
+                e.abort(t), At.reject(t)))).toPromise();
+                // As noted above, errors are propagated by aborting the transaction. So
+                // we swallow any error here to avoid the browser logging it as unhandled.
+                return r.catch((() => {})), 
+                // Wait for the transaction to complete (i.e. IndexedDb's onsuccess event to
+                // fire), but still return the original transactionFnResult back to the
+                // caller.
+                await e.P, r;
+            } catch (t) {
+                const e = t, n = "FirebaseError" !== e.name && r < 3;
+                // TODO(schmidt-sebastian): We could probably be smarter about this and
+                // not retry exceptions that are likely unrecoverable (such as quota
+                // exceeded errors).
+                // Note: We cannot use an instanceof check for FirestoreException, since the
+                // exception is wrapped in a generic error by our async/await handling.
+                                if (C$1("SimpleDb", "Transaction failed with error:", e.message, "Retrying:", n), 
+                this.close(), !n) return Promise.reject(e);
+            }
+        }
+    }
+    close() {
+        this.db && this.db.close(), this.db = void 0;
+    }
+}
+
+/**
+ * A controller for iterating over a key range or index. It allows an iterate
+ * callback to delete the currently-referenced object, or jump to a new key
+ * within the key range or index.
+ */ class vt {
+    constructor(t) {
+        this.q = t, this.U = !1, this.K = null;
+    }
+    get isDone() {
+        return this.U;
+    }
+    get G() {
+        return this.K;
+    }
+    set cursor(t) {
+        this.q = t;
+    }
+    /**
+     * This function can be called to stop iteration at any point.
+     */    done() {
+        this.U = !0;
+    }
+    /**
+     * This function can be called to skip to that next key, which could be
+     * an index or a primary key.
+     */    j(t) {
+        this.K = t;
+    }
+    /**
+     * Delete the current cursor value from the object store.
+     *
+     * NOTE: You CANNOT do this with a keysOnly query.
+     */    delete() {
+        return Dt(this.q.delete());
+    }
+}
+
+/** An error that wraps exceptions that thrown during IndexedDB execution. */ class Pt extends L$1 {
+    constructor(t, e) {
+        super(B.UNAVAILABLE, `IndexedDB transaction '${t}' failed: ${e}`), this.name = "IndexedDbTransactionError";
+    }
+}
+
 /** Verifies whether `e` is an IndexedDbTransactionError. */ function Vt(t) {
     // Use name equality, as instanceof checks on errors don't work with errors
     // that wrap other errors.
     return "IndexedDbTransactionError" === t.name;
+}
+
+/**
+ * A wrapper around an IDBObjectStore providing an API that:
+ *
+ * 1) Has generic KeyType / ValueType parameters to provide strongly-typed
+ * methods for acting against the object store.
+ * 2) Deals with IndexedDB's onsuccess / onerror event callbacks, making every
+ * method return a PersistencePromise instead.
+ * 3) Provides a higher-level API to avoid needing to do excessive wrapping of
+ * intermediate IndexedDB types (IDBCursorWithValue, etc.)
+ */ class St {
+    constructor(t) {
+        this.store = t;
+    }
+    put(t, e) {
+        let n;
+        return void 0 !== e ? (C$1("SimpleDb", "PUT", this.store.name, t, e), n = this.store.put(e, t)) : (C$1("SimpleDb", "PUT", this.store.name, "<auto-key>", t), 
+        n = this.store.put(t)), Dt(n);
+    }
+    /**
+     * Adds a new value into an Object Store and returns the new key. Similar to
+     * IndexedDb's `add()`, this method will fail on primary key collisions.
+     *
+     * @param value - The object to write.
+     * @returns The key of the value to add.
+     */    add(t) {
+        C$1("SimpleDb", "ADD", this.store.name, t, t);
+        return Dt(this.store.add(t));
+    }
+    /**
+     * Gets the object with the specified key from the specified store, or null
+     * if no object exists with the specified key.
+     *
+     * @key The key of the object to get.
+     * @returns The object with the specified key or null if no object exists.
+     */    get(t) {
+        // We're doing an unsafe cast to ValueType.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return Dt(this.store.get(t)).next((e => (
+        // Normalize nonexistence to null.
+        void 0 === e && (e = null), C$1("SimpleDb", "GET", this.store.name, t, e), e)));
+    }
+    delete(t) {
+        C$1("SimpleDb", "DELETE", this.store.name, t);
+        return Dt(this.store.delete(t));
+    }
+    /**
+     * If we ever need more of the count variants, we can add overloads. For now,
+     * all we need is to count everything in a store.
+     *
+     * Returns the number of rows in the store.
+     */    count() {
+        C$1("SimpleDb", "COUNT", this.store.name);
+        return Dt(this.store.count());
+    }
+    W(t, e) {
+        const n = this.options(t, e);
+        // Use `getAll()` if the browser supports IndexedDB v3, as it is roughly
+        // 20% faster. Unfortunately, getAll() does not support custom indices.
+                if (n.index || "function" != typeof this.store.getAll) {
+            const t = this.cursor(n), e = [];
+            return this.H(t, ((t, n) => {
+                e.push(n);
+            })).next((() => e));
+        }
+        {
+            const t = this.store.getAll(n.range);
+            return new At(((e, n) => {
+                t.onerror = t => {
+                    n(t.target.error);
+                }, t.onsuccess = t => {
+                    e(t.target.result);
+                };
+            }));
+        }
+    }
+    /**
+     * Loads the first `count` elements from the provided index range. Loads all
+     * elements if no limit is provided.
+     */    J(t, e) {
+        const n = this.store.getAll(t, null === e ? void 0 : e);
+        return new At(((t, e) => {
+            n.onerror = t => {
+                e(t.target.error);
+            }, n.onsuccess = e => {
+                t(e.target.result);
+            };
+        }));
+    }
+    Y(t, e) {
+        C$1("SimpleDb", "DELETE ALL", this.store.name);
+        const n = this.options(t, e);
+        n.Z = !1;
+        const s = this.cursor(n);
+        return this.H(s, ((t, e, n) => n.delete()));
+    }
+    X(t, e) {
+        let n;
+        e ? n = t : (n = {}, e = t);
+        const s = this.cursor(n);
+        return this.H(s, e);
+    }
+    /**
+     * Iterates over a store, but waits for the given callback to complete for
+     * each entry before iterating the next entry. This allows the callback to do
+     * asynchronous work to determine if this iteration should continue.
+     *
+     * The provided callback should return `true` to continue iteration, and
+     * `false` otherwise.
+     */    tt(t) {
+        const e = this.cursor({});
+        return new At(((n, s) => {
+            e.onerror = t => {
+                const e = xt(t.target.error);
+                s(e);
+            }, e.onsuccess = e => {
+                const s = e.target.result;
+                s ? t(s.primaryKey, s.value).next((t => {
+                    t ? s.continue() : n();
+                })) : n();
+            };
+        }));
+    }
+    H(t, e) {
+        const n = [];
+        return new At(((s, i) => {
+            t.onerror = t => {
+                i(t.target.error);
+            }, t.onsuccess = t => {
+                const i = t.target.result;
+                if (!i) return void s();
+                const r = new vt(i), o = e(i.primaryKey, i.value, r);
+                if (o instanceof At) {
+                    const t = o.catch((t => (r.done(), At.reject(t))));
+                    n.push(t);
+                }
+                r.isDone ? s() : null === r.G ? i.continue() : i.continue(r.G);
+            };
+        })).next((() => At.waitFor(n)));
+    }
+    options(t, e) {
+        let n;
+        return void 0 !== t && ("string" == typeof t ? n = t : e = t), {
+            index: n,
+            range: e
+        };
+    }
+    cursor(t) {
+        let e = "next";
+        if (t.reverse && (e = "prev"), t.index) {
+            const n = this.store.index(t.index);
+            return t.Z ? n.openKeyCursor(t.range, e) : n.openCursor(t.range, e);
+        }
+        return this.store.openCursor(t.range, e);
+    }
+}
+
+/**
+ * Wraps an IDBRequest in a PersistencePromise, using the onsuccess / onerror
+ * handlers to resolve / reject the PersistencePromise as appropriate.
+ */ function Dt(t) {
+    return new At(((e, n) => {
+        t.onsuccess = t => {
+            const n = t.target.result;
+            e(n);
+        }, t.onerror = t => {
+            const e = xt(t.target.error);
+            n(e);
+        };
+    }));
+}
+
+// Guard so we only report the error once.
+let Ct = !1;
+
+function xt(t) {
+    const e = bt.D(getUA());
+    if (e >= 12.2 && e < 13) {
+        const e = "An internal error was encountered in the Indexed Database server";
+        if (t.message.indexOf(e) >= 0) {
+            // Wrap error in a more descriptive one.
+            const t = new L$1("internal", `IOS_INDEXEDDB_BUG1: IndexedDb has thrown '${e}'. This is likely due to an unavoidable bug in iOS. See https://stackoverflow.com/q/56496296/110915 for details and a potential workaround.`);
+            return Ct || (Ct = !0, 
+            // Throw a global exception outside of this promise chain, for the user to
+            // potentially catch.
+            setTimeout((() => {
+                throw t;
+            }), 0)), t;
+        }
+    }
+    return t;
+}
+
+/** This class is responsible for the scheduling of Index Backfiller. */
+class Nt {
+    constructor(t, e) {
+        this.asyncQueue = t, this.et = e, this.task = null;
+    }
+    start() {
+        this.nt(15e3);
+    }
+    stop() {
+        this.task && (this.task.cancel(), this.task = null);
+    }
+    get started() {
+        return null !== this.task;
+    }
+    nt(t) {
+        C$1("IndexBackiller", `Scheduled in ${t}ms`), this.task = this.asyncQueue.enqueueAfterDelay("index_backfill" /* TimerId.IndexBackfill */ , t, (async () => {
+            this.task = null;
+            try {
+                C$1("IndexBackiller", `Documents written: ${await this.et.st()}`);
+            } catch (t) {
+                Vt(t) ? C$1("IndexBackiller", "Ignoring IndexedDB error during index backfill: ", t) : await Et(t);
+            }
+            await this.nt(6e4);
+        }));
+    }
+}
+
+/** Implements the steps for backfilling indexes. */ class kt {
+    constructor(
+    /**
+     * LocalStore provides access to IndexManager and LocalDocumentView.
+     * These properties will update when the user changes. Consequently,
+     * making a local copy of IndexManager and LocalDocumentView will require
+     * updates over time. The simpler solution is to rely on LocalStore to have
+     * an up-to-date references to IndexManager and LocalDocumentStore.
+     */
+    t, e) {
+        this.localStore = t, this.persistence = e;
+    }
+    async st(t = 50) {
+        return this.persistence.runTransaction("Backfill Indexes", "readwrite-primary", (e => this.it(e, t)));
+    }
+    /** Writes index entries until the cap is reached. Returns the number of documents processed. */    it(t, e) {
+        const n = new Set;
+        let s = e, i = !0;
+        return At.doWhile((() => !0 === i && s > 0), (() => this.localStore.indexManager.getNextCollectionGroupToUpdate(t).next((e => {
+            if (null !== e && !n.has(e)) return C$1("IndexBackiller", `Processing collection: ${e}`), 
+            this.rt(t, e, s).next((t => {
+                s -= t, n.add(e);
+            }));
+            i = !1;
+        })))).next((() => e - s));
+    }
+    /**
+     * Writes entries for the provided collection group. Returns the number of documents processed.
+     */    rt(t, e, n) {
+        // Use the earliest offset of all field indexes to query the local cache.
+        return this.localStore.indexManager.getMinOffsetFromCollectionGroup(t, e).next((s => this.localStore.localDocuments.getNextDocuments(t, e, s, n).next((n => {
+            const i = n.changes;
+            return this.localStore.indexManager.updateIndexEntries(t, i).next((() => this.ot(s, n))).next((n => (C$1("IndexBackiller", `Updating offset: ${n}`), 
+            this.localStore.indexManager.updateCollectionGroup(t, e, n)))).next((() => i.size));
+        }))));
+    }
+    /** Returns the next offset based on the provided documents. */    ot(t, e) {
+        let n = t;
+        return e.changes.forEach(((t, e) => {
+            const s = gt(e);
+            pt(s, n) > 0 && (n = s);
+        })), new yt(n.readTime, n.documentKey, Math.max(e.batchId, t.largestBatchId));
+    }
 }
 
 /**
@@ -10179,6 +15969,72 @@ function pt(t, e) {
 }
 
 Ot.at = -1;
+
+/**
+ * @license
+ * Copyright 2022 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+const Mt = /^[_a-zA-Z][_a-zA-Z0-9]*(?:\.[_a-zA-Z][_a-zA-Z0-9]*)*$/;
+
+/**
+ * An alias for aggregation results.
+ * @internal
+ */ class Ft {
+    /**
+     * @internal
+     * @param alias Un-escaped alias representation
+     */
+    constructor(t) {
+        this.alias = t;
+    }
+    /**
+     * Returns true if the string could be used as an alias.
+     */    static ht(t) {
+        return Mt.test(t);
+    }
+    /**
+     * Return an escaped and quoted string representation of the alias.
+     */    canonicalString() {
+        let t = this.alias.replace(/\\/g, "\\\\").replace(/`/g, "\\`");
+        return Ft.ht(t) || (t = "`" + t + "`"), t;
+    }
+}
+
+/**
+ * @license
+ * Copyright 2023 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Concrete implementation of the Aggregate type.
+ */ class $t {
+    constructor(t, e, n) {
+        this.alias = t, this.lt = e, this.fieldPath = n;
+    }
+}
 
 /**
  * @license
@@ -10329,6 +16185,28 @@ function Gt(t) {
     constructor() {
         super(...arguments), this.name = "Base64DecodeError";
     }
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/** Converts a Base64 encoded string to a binary string. */
+/** True if and only if the Base64 conversion functions are available. */
+function Wt() {
+    return "undefined" != typeof atob;
 }
 
 /**
@@ -10568,6 +16446,8 @@ function ee(t) {
             }
         }
     }
+}, ie = {
+    nullValue: "NULL_VALUE"
 };
 
 /** Extracts the backend's type order for the provided value. */
@@ -10827,6 +16707,66 @@ function _e(t) {
     return "__max__" === (((t.mapValue || {}).fields || {}).__type__ || {}).stringValue;
 }
 
+/** Returns the lowest value for the given value type (inclusive). */ function Ie(t) {
+    return "nullValue" in t ? ie : "booleanValue" in t ? {
+        booleanValue: !1
+    } : "integerValue" in t || "doubleValue" in t ? {
+        doubleValue: NaN
+    } : "timestampValue" in t ? {
+        timestampValue: {
+            seconds: Number.MIN_SAFE_INTEGER
+        }
+    } : "stringValue" in t ? {
+        stringValue: ""
+    } : "bytesValue" in t ? {
+        bytesValue: ""
+    } : "referenceValue" in t ? fe(Lt.empty(), ct.empty()) : "geoPointValue" in t ? {
+        geoPointValue: {
+            latitude: -90,
+            longitude: -180
+        }
+    } : "arrayValue" in t ? {
+        arrayValue: {}
+    } : "mapValue" in t ? {
+        mapValue: {}
+    } : O();
+}
+
+/** Returns the largest value for the given value type (exclusive). */ function Te(t) {
+    return "nullValue" in t ? {
+        booleanValue: !1
+    } : "booleanValue" in t ? {
+        doubleValue: NaN
+    } : "integerValue" in t || "doubleValue" in t ? {
+        timestampValue: {
+            seconds: Number.MIN_SAFE_INTEGER
+        }
+    } : "timestampValue" in t ? {
+        stringValue: ""
+    } : "stringValue" in t ? {
+        bytesValue: ""
+    } : "bytesValue" in t ? fe(Lt.empty(), ct.empty()) : "referenceValue" in t ? {
+        geoPointValue: {
+            latitude: -90,
+            longitude: -180
+        }
+    } : "geoPointValue" in t ? {
+        arrayValue: {}
+    } : "arrayValue" in t ? {
+        mapValue: {}
+    } : "mapValue" in t ? se : O();
+}
+
+function Ee(t, e) {
+    const n = ce(t.value, e.value);
+    return 0 !== n ? n : t.inclusive && !e.inclusive ? -1 : !t.inclusive && e.inclusive ? 1 : 0;
+}
+
+function Ae(t, e) {
+    const n = ce(t.value, e.value);
+    return 0 !== n ? n : t.inclusive && !e.inclusive ? 1 : !t.inclusive && e.inclusive ? -1 : 0;
+}
+
 /**
  * @license
  * Copyright 2022 Google LLC
@@ -10997,6 +16937,10 @@ function De(t) {
     return "and" /* CompositeOperator.AND */ === t.op;
 }
 
+function Ce(t) {
+    return "or" /* CompositeOperator.OR */ === t.op;
+}
+
 /**
  * Returns true if this filter is a conjunction of field filters only. Returns false otherwise.
  */ function xe(t) {
@@ -11044,6 +16988,11 @@ function Oe(t, e) {
  * Returns a new composite filter that contains all filter from
  * `compositeFilter` plus all the given filters in `otherFilters`.
  */ (t, e) : void O();
+}
+
+function Me(t, e) {
+    const n = t.filters.concat(e);
+    return Se.create(n, t.op);
 }
 
 /** Returns a debug description for `filter`. */ function Fe(t) {
@@ -11616,6 +17565,30 @@ class Ze {
 }
 
 /**
+ * Compares two sorted sets for equality using their natural ordering. The
+ * method computes the intersection and invokes `onAdd` for every element that
+ * is in `after` but not `before`. `onRemove` is invoked for every element in
+ * `before` but missing from `after`.
+ *
+ * The method creates a copy of both `before` and `after` and runs in O(n log
+ * n), where n is the size of the two lists.
+ *
+ * @param before - The elements that exist in the original set.
+ * @param after - The elements to diff against the original set.
+ * @param comparator - The comparator for the elements in before and after.
+ * @param onAdd - A function to invoke for every element that is part of `
+ * after` but not `before`.
+ * @param onRemove - A function to invoke for every element that is part of
+ * `before` but not `after`.
+ */
+/**
+ * Returns the next element from the iterator or `undefined` if none available.
+ */
+function Xe(t) {
+    return t.hasNext() ? t.getNext() : void 0;
+}
+
+/**
  * @license
  * Copyright 2020 Google LLC
  *
@@ -12004,6 +17977,131 @@ function cn(t, e) {
 
 function an(t) {
     return ct.isDocumentKey(t.path) && null === t.collectionGroup && 0 === t.filters.length;
+}
+
+/** Returns the field filters that target the given field path. */ function hn(t, e) {
+    return t.filters.filter((t => t instanceof Ve && t.field.isEqual(e)));
+}
+
+/**
+ * Returns the values that are used in ARRAY_CONTAINS or ARRAY_CONTAINS_ANY
+ * filters. Returns `null` if there are no such filters.
+ */
+/**
+ * Returns the value to use as the lower bound for ascending index segment at
+ * the provided `fieldPath` (or the upper bound for an descending segment).
+ */
+function ln(t, e, n) {
+    let s = ie, i = !0;
+    // Process all filters to find a value for the current field segment
+    for (const n of hn(t, e)) {
+        let t = ie, e = !0;
+        switch (n.op) {
+          case "<" /* Operator.LESS_THAN */ :
+          case "<=" /* Operator.LESS_THAN_OR_EQUAL */ :
+            t = Ie(n.value);
+            break;
+
+          case "==" /* Operator.EQUAL */ :
+          case "in" /* Operator.IN */ :
+          case ">=" /* Operator.GREATER_THAN_OR_EQUAL */ :
+            t = n.value;
+            break;
+
+          case ">" /* Operator.GREATER_THAN */ :
+            t = n.value, e = !1;
+            break;
+
+          case "!=" /* Operator.NOT_EQUAL */ :
+          case "not-in" /* Operator.NOT_IN */ :
+            t = ie;
+ // Remaining filters cannot be used as lower bounds.
+                }
+        Ee({
+            value: s,
+            inclusive: i
+        }, {
+            value: t,
+            inclusive: e
+        }) < 0 && (s = t, i = e);
+    }
+    // If there is an additional bound, compare the values against the existing
+    // range to see if we can narrow the scope.
+        if (null !== n) for (let r = 0; r < t.orderBy.length; ++r) {
+        if (t.orderBy[r].field.isEqual(e)) {
+            const t = n.position[r];
+            Ee({
+                value: s,
+                inclusive: i
+            }, {
+                value: t,
+                inclusive: n.inclusive
+            }) < 0 && (s = t, i = n.inclusive);
+            break;
+        }
+    }
+    return {
+        value: s,
+        inclusive: i
+    };
+}
+
+/**
+ * Returns the value to use as the upper bound for ascending index segment at
+ * the provided `fieldPath` (or the lower bound for a descending segment).
+ */ function fn(t, e, n) {
+    let s = se, i = !0;
+    // Process all filters to find a value for the current field segment
+    for (const n of hn(t, e)) {
+        let t = se, e = !0;
+        switch (n.op) {
+          case ">=" /* Operator.GREATER_THAN_OR_EQUAL */ :
+          case ">" /* Operator.GREATER_THAN */ :
+            t = Te(n.value), e = !1;
+            break;
+
+          case "==" /* Operator.EQUAL */ :
+          case "in" /* Operator.IN */ :
+          case "<=" /* Operator.LESS_THAN_OR_EQUAL */ :
+            t = n.value;
+            break;
+
+          case "<" /* Operator.LESS_THAN */ :
+            t = n.value, e = !1;
+            break;
+
+          case "!=" /* Operator.NOT_EQUAL */ :
+          case "not-in" /* Operator.NOT_IN */ :
+            t = se;
+ // Remaining filters cannot be used as upper bounds.
+                }
+        Ae({
+            value: s,
+            inclusive: i
+        }, {
+            value: t,
+            inclusive: e
+        }) > 0 && (s = t, i = e);
+    }
+    // If there is an additional bound, compare the values against the existing
+    // range to see if we can narrow the scope.
+        if (null !== n) for (let r = 0; r < t.orderBy.length; ++r) {
+        if (t.orderBy[r].field.isEqual(e)) {
+            const t = n.position[r];
+            Ae({
+                value: s,
+                inclusive: i
+            }, {
+                value: t,
+                inclusive: n.inclusive
+            }) > 0 && (s = t, i = n.inclusive);
+            break;
+        }
+    }
+    return {
+        value: s,
+        inclusive: i
+    };
 }
 
 /** Returns the number of segments of a perfect index for this target. */
@@ -12445,6 +18543,28 @@ function Gn(t) {
 
 function Qn(t) {
     return _e(t) && t.arrayValue.values ? t.arrayValue.values.slice() : [];
+}
+
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/** A field path and the TransformOperation to perform upon it. */ class jn {
+    constructor(t, e) {
+        this.field = t, this.transform = e;
+    }
 }
 
 function zn(t, e) {
@@ -13731,8 +19851,8 @@ function Ws(t, e) {
 
 function Hs(t, e) {
     const n = zs(e);
-    if (n.get(1) !== t.databaseId.projectId) throw new L(B.INVALID_ARGUMENT, "Tried to deserialize key from different project: " + n.get(1) + " vs " + t.databaseId.projectId);
-    if (n.get(3) !== t.databaseId.database) throw new L(B.INVALID_ARGUMENT, "Tried to deserialize key from different database: " + n.get(3) + " vs " + t.databaseId.database);
+    if (n.get(1) !== t.databaseId.projectId) throw new L$1(B.INVALID_ARGUMENT, "Tried to deserialize key from different project: " + n.get(1) + " vs " + t.databaseId.projectId);
+    if (n.get(3) !== t.databaseId.database) throw new L$1(B.INVALID_ARGUMENT, "Tried to deserialize key from different database: " + n.get(3) + " vs " + t.databaseId.database);
     return new ct(Xs(n));
 }
 
@@ -13764,6 +19884,31 @@ function Xs(t) {
     };
 }
 
+function ei(t, e, n) {
+    const s = Hs(t, e.name), i = Qs(e.updateTime), r = e.createTime ? Qs(e.createTime) : st.min(), o = new en({
+        mapValue: {
+            fields: e.fields
+        }
+    }), u = sn.newFoundDocument(s, i, r, o);
+    return n && u.setHasCommittedMutations(), n ? u.setHasCommittedMutations() : u;
+}
+
+function ni(t, e) {
+    return "found" in e ? function(t, e) {
+        M$1(!!e.found), e.found.name, e.found.updateTime;
+        const n = Hs(t, e.found.name), s = Qs(e.found.updateTime), i = e.found.createTime ? Qs(e.found.createTime) : st.min(), r = new en({
+            mapValue: {
+                fields: e.found.fields
+            }
+        });
+        return sn.newFoundDocument(n, s, i, r);
+    }(t, e) : "missing" in e ? function(t, e) {
+        M$1(!!e.missing), M$1(!!e.readTime);
+        const n = Hs(t, e.missing), s = Qs(e.readTime);
+        return sn.newNoDocument(n, s);
+    }(t, e) : O();
+}
+
 function si(t, e) {
     let n;
     if ("targetChange" in e) {
@@ -13777,7 +19922,7 @@ function si(t, e) {
             Ht.fromUint8Array(e || new Uint8Array));
         }(t, e.targetChange.resumeToken), o = e.targetChange.cause, u = o && function(t) {
             const e = void 0 === t.code ? B.UNKNOWN : _s(t.code);
-            return new L(e, t.message || "");
+            return new L$1(e, t.message || "");
         }
         /**
  * Returns a value for a number (or null) that's appropriate to put into
@@ -13868,6 +20013,48 @@ function ii(t, e) {
             exists: e.exists
         } : O();
     }(t, e.precondition)), n;
+}
+
+function ri(t, e) {
+    const n = e.currentDocument ? function(t) {
+        return void 0 !== t.updateTime ? Hn.updateTime(Qs(t.updateTime)) : void 0 !== t.exists ? Hn.exists(t.exists) : Hn.none();
+    }(e.currentDocument) : Hn.none(), s = e.updateTransforms ? e.updateTransforms.map((e => function(t, e) {
+        let n = null;
+        if ("setToServerValue" in e) M$1("REQUEST_TIME" === e.setToServerValue), n = new $n; else if ("appendMissingElements" in e) {
+            const t = e.appendMissingElements.values || [];
+            n = new Bn(t);
+        } else if ("removeAllFromArray" in e) {
+            const t = e.removeAllFromArray.values || [];
+            n = new qn(t);
+        } else "increment" in e ? n = new Kn(t, e.increment) : O();
+        const s = ut.fromServerFormat(e.fieldPath);
+        return new jn(s, n);
+    }(t, e))) : [];
+    if (e.update) {
+        e.update.name;
+        const i = Hs(t, e.update.name), r = new en({
+            mapValue: {
+                fields: e.update.fields
+            }
+        });
+        if (e.updateMask) {
+            const t = function(t) {
+                const e = t.fieldPaths || [];
+                return new tn(e.map((t => ut.fromServerFormat(t))));
+            }(e.updateMask);
+            return new is(i, r, t, n, s);
+        }
+        return new ss(i, r, n, s);
+    }
+    if (e.delete) {
+        const s = Hs(t, e.delete);
+        return new cs(s, n);
+    }
+    if (e.verify) {
+        const s = Hs(t, e.verify);
+        return new as(s, n);
+    }
+    return O();
 }
 
 function oi(t, e) {
@@ -14196,6 +20383,191 @@ function pi(t) {
  * limitations under the License.
  */
 /**
+ * Encodes a resource path into a IndexedDb-compatible string form.
+ */
+function Ii(t) {
+    let e = "";
+    for (let n = 0; n < t.length; n++) e.length > 0 && (e = Ei(e)), e = Ti(t.get(n), e);
+    return Ei(e);
+}
+
+/** Encodes a single segment of a resource path into the given result */ function Ti(t, e) {
+    let n = e;
+    const s = t.length;
+    for (let e = 0; e < s; e++) {
+        const s = t.charAt(e);
+        switch (s) {
+          case "\0":
+            n += "";
+            break;
+
+          case "":
+            n += "";
+            break;
+
+          default:
+            n += s;
+        }
+    }
+    return n;
+}
+
+/** Encodes a path separator into the given result */ function Ei(t) {
+    return t + "";
+}
+
+/**
+ * Decodes the given IndexedDb-compatible string form of a resource path into
+ * a ResourcePath instance. Note that this method is not suitable for use with
+ * decoding resource names from the server; those are One Platform format
+ * strings.
+ */ function Ai(t) {
+    // Event the empty path must encode as a path of at least length 2. A path
+    // with exactly 2 must be the empty path.
+    const e = t.length;
+    if (M$1(e >= 2), 2 === e) return M$1("" === t.charAt(0) && "" === t.charAt(1)), rt.emptyPath();
+    // Escape characters cannot exist past the second-to-last position in the
+    // source value.
+        const n = e - 2, s = [];
+    let i = "";
+    for (let r = 0; r < e; ) {
+        // The last two characters of a valid encoded path must be a separator, so
+        // there must be an end to this segment.
+        const e = t.indexOf("", r);
+        (e < 0 || e > n) && O();
+        switch (t.charAt(e + 1)) {
+          case "":
+            const n = t.substring(r, e);
+            let o;
+            0 === i.length ? 
+            // Avoid copying for the common case of a segment that excludes \0
+            // and \001
+            o = n : (i += n, o = i, i = ""), s.push(o);
+            break;
+
+          case "":
+            i += t.substring(r, e), i += "\0";
+            break;
+
+          case "":
+            // The escape character can be used in the output to encode itself.
+            i += t.substring(r, e + 1);
+            break;
+
+          default:
+            O();
+        }
+        r = e + 2;
+    }
+    return new rt(s);
+}
+
+/**
+ * @license
+ * Copyright 2022 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */ const Ri = [ "userId", "batchId" ];
+
+/**
+ * @license
+ * Copyright 2022 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Name of the IndexedDb object store.
+ *
+ * Note that the name 'owner' is chosen to ensure backwards compatibility with
+ * older clients that only supported single locked access to the persistence
+ * layer.
+ */
+/**
+ * Creates a [userId, encodedPath] key for use in the DbDocumentMutations
+ * index to iterate over all at document mutations for a given path or lower.
+ */
+function bi(t, e) {
+    return [ t, Ii(e) ];
+}
+
+/**
+ * Creates a full index key of [userId, encodedPath, batchId] for inserting
+ * and deleting into the DbDocumentMutations index.
+ */ function vi(t, e, n) {
+    return [ t, Ii(e), n ];
+}
+
+/**
+ * Because we store all the useful information for this store in the key,
+ * there is no useful information to store as the value. The raw (unencoded)
+ * path cannot be stored because IndexedDb doesn't store prototype
+ * information.
+ */ const Pi = {}, Vi = [ "prefixPath", "collectionGroup", "readTime", "documentId" ], Si = [ "prefixPath", "collectionGroup", "documentId" ], Di = [ "collectionGroup", "readTime", "prefixPath", "documentId" ], Ci = [ "canonicalId", "targetId" ], xi = [ "targetId", "path" ], Ni = [ "path", "targetId" ], ki = [ "collectionId", "parent" ], Oi = [ "indexId", "uid" ], Mi = [ "uid", "sequenceNumber" ], Fi = [ "indexId", "uid", "arrayValue", "directionalValue", "orderedDocumentKey", "documentKey" ], $i = [ "indexId", "uid", "orderedDocumentKey" ], Bi = [ "userId", "collectionPath", "documentId" ], Li = [ "userId", "collectionPath", "largestBatchId" ], qi = [ "userId", "collectionGroup", "largestBatchId" ], Ui = [ ...[ ...[ ...[ ...[ "mutationQueues", "mutations", "documentMutations", "remoteDocuments", "targets", "owner", "targetGlobal", "targetDocuments" ], "clientMetadata" ], "remoteDocumentGlobal" ], "collectionParents" ], "bundles", "namedQueries" ], Ki = [ ...Ui, "documentOverlays" ], Gi = [ "mutationQueues", "mutations", "documentMutations", "remoteDocumentsV14", "targets", "owner", "targetGlobal", "targetDocuments", "clientMetadata", "remoteDocumentGlobal", "collectionParents", "bundles", "namedQueries", "documentOverlays" ], Qi = Gi, ji = [ ...Qi, "indexConfiguration", "indexState", "indexEntries" ];
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+class zi extends Tt {
+    constructor(t, e) {
+        super(), this.re = t, this.currentSequenceNumber = e;
+    }
+}
+
+function Wi(t, e) {
+    const n = $$1(t);
+    return bt.M(n.re, e);
+}
+
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
  * A batch of mutations that will be sent as one unit to the backend.
  */ class Hi {
     /**
@@ -14419,6 +20791,120 @@ function pi(t) {
     }
 }
 
+/** Decodes a remote document from storage locally to a Document. */ function tr(t, e) {
+    let n;
+    if (e.document) n = ei(t.oe, e.document, !!e.hasCommittedMutations); else if (e.noDocument) {
+        const t = ct.fromSegments(e.noDocument.path), s = ir(e.noDocument.readTime);
+        n = sn.newNoDocument(t, s), e.hasCommittedMutations && n.setHasCommittedMutations();
+    } else {
+        if (!e.unknownDocument) return O();
+        {
+            const t = ct.fromSegments(e.unknownDocument.path), s = ir(e.unknownDocument.version);
+            n = sn.newUnknownDocument(t, s);
+        }
+    }
+    return e.readTime && n.setReadTime(function(t) {
+        const e = new nt(t[0], t[1]);
+        return st.fromTimestamp(e);
+    }(e.readTime)), n;
+}
+
+/** Encodes a document for storage locally. */ function er(t, e) {
+    const n = e.key, s = {
+        prefixPath: n.getCollectionPath().popLast().toArray(),
+        collectionGroup: n.collectionGroup,
+        documentId: n.path.lastSegment(),
+        readTime: nr(e.readTime),
+        hasCommittedMutations: e.hasCommittedMutations
+    };
+    if (e.isFoundDocument()) s.document = function(t, e) {
+        return {
+            name: Ws(t, e.key),
+            fields: e.data.value.mapValue.fields,
+            updateTime: Us(t, e.version.toTimestamp()),
+            createTime: Us(t, e.createTime.toTimestamp())
+        };
+    }(t.oe, e); else if (e.isNoDocument()) s.noDocument = {
+        path: n.path.toArray(),
+        readTime: sr(e.version)
+    }; else {
+        if (!e.isUnknownDocument()) return O();
+        s.unknownDocument = {
+            path: n.path.toArray(),
+            version: sr(e.version)
+        };
+    }
+    return s;
+}
+
+function nr(t) {
+    const e = t.toTimestamp();
+    return [ e.seconds, e.nanoseconds ];
+}
+
+function sr(t) {
+    const e = t.toTimestamp();
+    return {
+        seconds: e.seconds,
+        nanoseconds: e.nanoseconds
+    };
+}
+
+function ir(t) {
+    const e = new nt(t.seconds, t.nanoseconds);
+    return st.fromTimestamp(e);
+}
+
+/** Encodes a batch of mutations into a DbMutationBatch for local storage. */
+/** Decodes a DbMutationBatch into a MutationBatch */
+function rr(t, e) {
+    const n = (e.baseMutations || []).map((e => ri(t.oe, e)));
+    // Squash old transform mutations into existing patch or set mutations.
+    // The replacement of representing `transforms` with `update_transforms`
+    // on the SDK means that old `transform` mutations stored in IndexedDB need
+    // to be updated to `update_transforms`.
+    // TODO(b/174608374): Remove this code once we perform a schema migration.
+        for (let t = 0; t < e.mutations.length - 1; ++t) {
+        const n = e.mutations[t];
+        if (t + 1 < e.mutations.length && void 0 !== e.mutations[t + 1].transform) {
+            const s = e.mutations[t + 1];
+            n.updateTransforms = s.transform.fieldTransforms, e.mutations.splice(t + 1, 1), 
+            ++t;
+        }
+    }
+    const s = e.mutations.map((e => ri(t.oe, e))), i = nt.fromMillis(e.localWriteTimeMs);
+    return new Hi(e.batchId, i, n, s);
+}
+
+/** Decodes a DbTarget into TargetData */ function or(t) {
+    const e = ir(t.readTime), n = void 0 !== t.lastLimboFreeSnapshotVersion ? ir(t.lastLimboFreeSnapshotVersion) : st.min();
+    let s;
+    var i;
+    return void 0 !== t.query.documents ? (M$1(1 === (i = t.query).documents.length), 
+    s = Tn(wn(Ys(i.documents[0])))) : s = function(t) {
+        return Tn(ai(t));
+    }(t.query), new Zi(s, t.targetId, 0 /* TargetPurpose.Listen */ , t.lastListenSequenceNumber, e, n, Ht.fromBase64String(t.resumeToken));
+}
+
+/** Encodes TargetData into a DbTarget for storage locally. */ function ur(t, e) {
+    const n = sr(e.snapshotVersion), s = sr(e.lastLimboFreeSnapshotVersion);
+    let i;
+    i = an(e.target) ? ui(t.oe, e.target) : ci(t.oe, e.target);
+    // We can't store the resumeToken as a ByteString in IndexedDb, so we
+    // convert it to a base64 string for storage.
+        const r = e.resumeToken.toBase64();
+    // lastListenSequenceNumber is always 0 until we do real GC.
+        return {
+        targetId: e.targetId,
+        canonicalId: un(e.target),
+        readTime: n,
+        resumeToken: r,
+        lastListenSequenceNumber: e.sequenceNumber,
+        lastLimboFreeSnapshotVersion: s,
+        query: i
+    };
+}
+
 /**
  * A helper function for figuring out what kind of query has been stored.
  */
@@ -14434,6 +20920,851 @@ function cr(t) {
         structuredQuery: t.structuredQuery
     });
     return "LAST" === t.limitType ? An(e, e.limit, "L" /* LimitType.Last */) : e;
+}
+
+/** Encodes a NamedQuery proto object to a NamedQuery model object. */
+/** Encodes a DbDocumentOverlay object to an Overlay model object. */
+function ar(t, e) {
+    return new Yi(e.largestBatchId, ri(t.oe, e.overlayMutation));
+}
+
+/** Decodes an Overlay model object into a DbDocumentOverlay object. */
+/**
+ * Returns the DbDocumentOverlayKey corresponding to the given user and
+ * document key.
+ */
+function hr(t, e) {
+    const n = e.path.lastSegment();
+    return [ t, Ii(e.path.popLast()), n ];
+}
+
+function lr(t, e, n, s) {
+    return {
+        indexId: t,
+        uid: e.uid || "",
+        sequenceNumber: n,
+        readTime: sr(s.readTime),
+        documentKey: Ii(s.documentKey.path),
+        largestBatchId: s.largestBatchId
+    };
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */ class fr {
+    getBundleMetadata(t, e) {
+        return dr(t).get(e).next((t => {
+            if (t) return {
+                id: (e = t).bundleId,
+                createTime: ir(e.createTime),
+                version: e.version
+            };
+            /** Encodes a DbBundle to a BundleMetadata object. */
+            var e;
+            /** Encodes a BundleMetadata to a DbBundle. */        }));
+    }
+    saveBundleMetadata(t, e) {
+        return dr(t).put({
+            bundleId: (n = e).id,
+            createTime: sr(Qs(n.createTime)),
+            version: n.version
+        });
+        var n;
+        /** Encodes a DbNamedQuery to a NamedQuery. */    }
+    getNamedQuery(t, e) {
+        return _r(t).get(e).next((t => {
+            if (t) return {
+                name: (e = t).name,
+                query: cr(e.bundledQuery),
+                readTime: ir(e.readTime)
+            };
+            var e;
+            /** Encodes a NamedQuery from a bundle proto to a DbNamedQuery. */        }));
+    }
+    saveNamedQuery(t, e) {
+        return _r(t).put(function(t) {
+            return {
+                name: t.name,
+                readTime: sr(Qs(t.readTime)),
+                bundledQuery: t.bundledQuery
+            };
+        }(e));
+    }
+}
+
+/**
+ * Helper to get a typed SimpleDbStore for the bundles object store.
+ */ function dr(t) {
+    return Wi(t, "bundles");
+}
+
+/**
+ * Helper to get a typed SimpleDbStore for the namedQueries object store.
+ */ function _r(t) {
+    return Wi(t, "namedQueries");
+}
+
+/**
+ * @license
+ * Copyright 2022 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Implementation of DocumentOverlayCache using IndexedDb.
+ */ class wr {
+    /**
+     * @param serializer - The document serializer.
+     * @param userId - The userId for which we are accessing overlays.
+     */
+    constructor(t, e) {
+        this.Tt = t, this.userId = e;
+    }
+    static ue(t, e) {
+        const n = e.uid || "";
+        return new wr(t, n);
+    }
+    getOverlay(t, e) {
+        return mr(t).get(hr(this.userId, e)).next((t => t ? ar(this.Tt, t) : null));
+    }
+    getOverlays(t, e) {
+        const n = Ts();
+        return At.forEach(e, (e => this.getOverlay(t, e).next((t => {
+            null !== t && n.set(e, t);
+        })))).next((() => n));
+    }
+    saveOverlays(t, e, n) {
+        const s = [];
+        return n.forEach(((n, i) => {
+            const r = new Yi(e, i);
+            s.push(this.ce(t, r));
+        })), At.waitFor(s);
+    }
+    removeOverlaysForBatchId(t, e, n) {
+        const s = new Set;
+        // Get the set of unique collection paths.
+                e.forEach((t => s.add(Ii(t.getCollectionPath()))));
+        const i = [];
+        return s.forEach((e => {
+            const s = IDBKeyRange.bound([ this.userId, e, n ], [ this.userId, e, n + 1 ], 
+            /*lowerOpen=*/ !1, 
+            /*upperOpen=*/ !0);
+            i.push(mr(t).Y("collectionPathOverlayIndex", s));
+        })), At.waitFor(i);
+    }
+    getOverlaysForCollection(t, e, n) {
+        const s = Ts(), i = Ii(e), r = IDBKeyRange.bound([ this.userId, i, n ], [ this.userId, i, Number.POSITIVE_INFINITY ], 
+        /*lowerOpen=*/ !0);
+        return mr(t).W("collectionPathOverlayIndex", r).next((t => {
+            for (const e of t) {
+                const t = ar(this.Tt, e);
+                s.set(t.getKey(), t);
+            }
+            return s;
+        }));
+    }
+    getOverlaysForCollectionGroup(t, e, n, s) {
+        const i = Ts();
+        let r;
+        // We want batch IDs larger than `sinceBatchId`, and so the lower bound
+        // is not inclusive.
+                const o = IDBKeyRange.bound([ this.userId, e, n ], [ this.userId, e, Number.POSITIVE_INFINITY ], 
+        /*lowerOpen=*/ !0);
+        return mr(t).X({
+            index: "collectionGroupOverlayIndex",
+            range: o
+        }, ((t, e, n) => {
+            // We do not want to return partial batch overlays, even if the size
+            // of the result set exceeds the given `count` argument. Therefore, we
+            // continue to aggregate results even after the result size exceeds
+            // `count` if there are more overlays from the `currentBatchId`.
+            const o = ar(this.Tt, e);
+            i.size() < s || o.largestBatchId === r ? (i.set(o.getKey(), o), r = o.largestBatchId) : n.done();
+        })).next((() => i));
+    }
+    ce(t, e) {
+        return mr(t).put(function(t, e, n) {
+            const [s, i, r] = hr(e, n.mutation.key);
+            return {
+                userId: e,
+                collectionPath: i,
+                documentId: r,
+                collectionGroup: n.mutation.key.getCollectionGroup(),
+                largestBatchId: n.largestBatchId,
+                overlayMutation: ii(t.oe, n.mutation)
+            };
+        }(this.Tt, this.userId, e));
+    }
+}
+
+/**
+ * Helper to get a typed SimpleDbStore for the document overlay object store.
+ */ function mr(t) {
+    return Wi(t, "documentOverlays");
+}
+
+/**
+ * @license
+ * Copyright 2021 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+// Note: This code is copied from the backend. Code that is not used by
+// Firestore was removed.
+/** Firestore index value writer.  */
+class gr {
+    constructor() {}
+    // The write methods below short-circuit writing terminators for values
+    // containing a (terminating) truncated value.
+    // As an example, consider the resulting encoding for:
+    // ["bar", [2, "foo"]] -> (STRING, "bar", TERM, ARRAY, NUMBER, 2, STRING, "foo", TERM, TERM, TERM)
+    // ["bar", [2, truncated("foo")]] -> (STRING, "bar", TERM, ARRAY, NUMBER, 2, STRING, "foo", TRUNC)
+    // ["bar", truncated(["foo"])] -> (STRING, "bar", TERM, ARRAY. STRING, "foo", TERM, TRUNC)
+    /** Writes an index value.  */
+    ae(t, e) {
+        this.he(t, e), 
+        // Write separator to split index values
+        // (see go/firestore-storage-format#encodings).
+        e.le();
+    }
+    he(t, e) {
+        if ("nullValue" in t) this.fe(e, 5); else if ("booleanValue" in t) this.fe(e, 10), 
+        e.de(t.booleanValue ? 1 : 0); else if ("integerValue" in t) this.fe(e, 15), e.de(Zt(t.integerValue)); else if ("doubleValue" in t) {
+            const n = Zt(t.doubleValue);
+            isNaN(n) ? this.fe(e, 13) : (this.fe(e, 15), Qt(n) ? 
+            // -0.0, 0 and 0.0 are all considered the same
+            e.de(0) : e.de(n));
+        } else if ("timestampValue" in t) {
+            const n = t.timestampValue;
+            this.fe(e, 20), "string" == typeof n ? e._e(n) : (e._e(`${n.seconds || ""}`), e.de(n.nanos || 0));
+        } else if ("stringValue" in t) this.we(t.stringValue, e), this.me(e); else if ("bytesValue" in t) this.fe(e, 30), 
+        e.ge(Xt(t.bytesValue)), this.me(e); else if ("referenceValue" in t) this.ye(t.referenceValue, e); else if ("geoPointValue" in t) {
+            const n = t.geoPointValue;
+            this.fe(e, 45), e.de(n.latitude || 0), e.de(n.longitude || 0);
+        } else "mapValue" in t ? pe(t) ? this.fe(e, Number.MAX_SAFE_INTEGER) : (this.pe(t.mapValue, e), 
+        this.me(e)) : "arrayValue" in t ? (this.Ie(t.arrayValue, e), this.me(e)) : O();
+    }
+    we(t, e) {
+        this.fe(e, 25), this.Te(t, e);
+    }
+    Te(t, e) {
+        e._e(t);
+    }
+    pe(t, e) {
+        const n = t.fields || {};
+        this.fe(e, 55);
+        for (const t of Object.keys(n)) this.we(t, e), this.he(n[t], e);
+    }
+    Ie(t, e) {
+        const n = t.values || [];
+        this.fe(e, 50);
+        for (const t of n) this.he(t, e);
+    }
+    ye(t, e) {
+        this.fe(e, 37);
+        ct.fromName(t).path.forEach((t => {
+            this.fe(e, 60), this.Te(t, e);
+        }));
+    }
+    fe(t, e) {
+        t.de(e);
+    }
+    me(t) {
+        // While the SDK does not implement truncation, the truncation marker is
+        // used to terminate all variable length values (which are strings, bytes,
+        // references, arrays and maps).
+        t.de(2);
+    }
+}
+
+gr.Ee = new gr;
+
+/**
+ * Counts the number of zeros in a byte.
+ *
+ * Visible for testing.
+ */
+function yr(t) {
+    if (0 === t) return 8;
+    let e = 0;
+    return t >> 4 == 0 && (
+    // Test if the first four bits are zero.
+    e += 4, t <<= 4), t >> 6 == 0 && (
+    // Test if the first two (or next two) bits are zero.
+    e += 2, t <<= 2), t >> 7 == 0 && (
+    // Test if the remaining bit is zero.
+    e += 1), e;
+}
+
+/** Counts the number of leading zeros in the given byte array. */
+/**
+ * Returns the number of bytes required to store "value". Leading zero bytes
+ * are skipped.
+ */
+function pr(t) {
+    // This is just the number of bytes for the unsigned representation of the number.
+    const e = 64 - function(t) {
+        let e = 0;
+        for (let n = 0; n < 8; ++n) {
+            const s = yr(255 & t[n]);
+            if (e += s, 8 !== s) break;
+        }
+        return e;
+    }(t);
+    return Math.ceil(e / 8);
+}
+
+/**
+ * OrderedCodeWriter is a minimal-allocation implementation of the writing
+ * behavior defined by the backend.
+ *
+ * The code is ported from its Java counterpart.
+ */ class Ir {
+    constructor() {
+        this.buffer = new Uint8Array(1024), this.position = 0;
+    }
+    Ae(t) {
+        const e = t[Symbol.iterator]();
+        let n = e.next();
+        for (;!n.done; ) this.Re(n.value), n = e.next();
+        this.be();
+    }
+    ve(t) {
+        const e = t[Symbol.iterator]();
+        let n = e.next();
+        for (;!n.done; ) this.Pe(n.value), n = e.next();
+        this.Ve();
+    }
+    /** Writes utf8 bytes into this byte sequence, ascending. */    Se(t) {
+        for (const e of t) {
+            const t = e.charCodeAt(0);
+            if (t < 128) this.Re(t); else if (t < 2048) this.Re(960 | t >>> 6), this.Re(128 | 63 & t); else if (e < "\ud800" || "\udbff" < e) this.Re(480 | t >>> 12), 
+            this.Re(128 | 63 & t >>> 6), this.Re(128 | 63 & t); else {
+                const t = e.codePointAt(0);
+                this.Re(240 | t >>> 18), this.Re(128 | 63 & t >>> 12), this.Re(128 | 63 & t >>> 6), 
+                this.Re(128 | 63 & t);
+            }
+        }
+        this.be();
+    }
+    /** Writes utf8 bytes into this byte sequence, descending */    De(t) {
+        for (const e of t) {
+            const t = e.charCodeAt(0);
+            if (t < 128) this.Pe(t); else if (t < 2048) this.Pe(960 | t >>> 6), this.Pe(128 | 63 & t); else if (e < "\ud800" || "\udbff" < e) this.Pe(480 | t >>> 12), 
+            this.Pe(128 | 63 & t >>> 6), this.Pe(128 | 63 & t); else {
+                const t = e.codePointAt(0);
+                this.Pe(240 | t >>> 18), this.Pe(128 | 63 & t >>> 12), this.Pe(128 | 63 & t >>> 6), 
+                this.Pe(128 | 63 & t);
+            }
+        }
+        this.Ve();
+    }
+    Ce(t) {
+        // Values are encoded with a single byte length prefix, followed by the
+        // actual value in big-endian format with leading 0 bytes dropped.
+        const e = this.xe(t), n = pr(e);
+        this.Ne(1 + n), this.buffer[this.position++] = 255 & n;
+        // Write the length
+        for (let t = e.length - n; t < e.length; ++t) this.buffer[this.position++] = 255 & e[t];
+    }
+    ke(t) {
+        // Values are encoded with a single byte length prefix, followed by the
+        // inverted value in big-endian format with leading 0 bytes dropped.
+        const e = this.xe(t), n = pr(e);
+        this.Ne(1 + n), this.buffer[this.position++] = ~(255 & n);
+        // Write the length
+        for (let t = e.length - n; t < e.length; ++t) this.buffer[this.position++] = ~(255 & e[t]);
+    }
+    /**
+     * Writes the "infinity" byte sequence that sorts after all other byte
+     * sequences written in ascending order.
+     */    Oe() {
+        this.Me(255), this.Me(255);
+    }
+    /**
+     * Writes the "infinity" byte sequence that sorts before all other byte
+     * sequences written in descending order.
+     */    Fe() {
+        this.$e(255), this.$e(255);
+    }
+    /**
+     * Resets the buffer such that it is the same as when it was newly
+     * constructed.
+     */    reset() {
+        this.position = 0;
+    }
+    seed(t) {
+        this.Ne(t.length), this.buffer.set(t, this.position), this.position += t.length;
+    }
+    /** Makes a copy of the encoded bytes in this buffer.  */    Be() {
+        return this.buffer.slice(0, this.position);
+    }
+    /**
+     * Encodes `val` into an encoding so that the order matches the IEEE 754
+     * floating-point comparison results with the following exceptions:
+     *   -0.0 < 0.0
+     *   all non-NaN < NaN
+     *   NaN = NaN
+     */    xe(t) {
+        const e = 
+        /** Converts a JavaScript number to a byte array (using big endian encoding). */
+        function(t) {
+            const e = new DataView(new ArrayBuffer(8));
+            return e.setFloat64(0, t, /* littleEndian= */ !1), new Uint8Array(e.buffer);
+        }(t), n = 0 != (128 & e[0]);
+        // Check if the first bit is set. We use a bit mask since value[0] is
+        // encoded as a number from 0 to 255.
+                // Revert the two complement to get natural ordering
+        e[0] ^= n ? 255 : 128;
+        for (let t = 1; t < e.length; ++t) e[t] ^= n ? 255 : 0;
+        return e;
+    }
+    /** Writes a single byte ascending to the buffer. */    Re(t) {
+        const e = 255 & t;
+        0 === e ? (this.Me(0), this.Me(255)) : 255 === e ? (this.Me(255), this.Me(0)) : this.Me(e);
+    }
+    /** Writes a single byte descending to the buffer.  */    Pe(t) {
+        const e = 255 & t;
+        0 === e ? (this.$e(0), this.$e(255)) : 255 === e ? (this.$e(255), this.$e(0)) : this.$e(t);
+    }
+    be() {
+        this.Me(0), this.Me(1);
+    }
+    Ve() {
+        this.$e(0), this.$e(1);
+    }
+    Me(t) {
+        this.Ne(1), this.buffer[this.position++] = t;
+    }
+    $e(t) {
+        this.Ne(1), this.buffer[this.position++] = ~t;
+    }
+    Ne(t) {
+        const e = t + this.position;
+        if (e <= this.buffer.length) return;
+        // Try doubling.
+                let n = 2 * this.buffer.length;
+        // Still not big enough? Just allocate the right size.
+                n < e && (n = e);
+        // Create the new buffer.
+                const s = new Uint8Array(n);
+        s.set(this.buffer), // copy old data
+        this.buffer = s;
+    }
+}
+
+class Tr {
+    constructor(t) {
+        this.Le = t;
+    }
+    ge(t) {
+        this.Le.Ae(t);
+    }
+    _e(t) {
+        this.Le.Se(t);
+    }
+    de(t) {
+        this.Le.Ce(t);
+    }
+    le() {
+        this.Le.Oe();
+    }
+}
+
+class Er {
+    constructor(t) {
+        this.Le = t;
+    }
+    ge(t) {
+        this.Le.ve(t);
+    }
+    _e(t) {
+        this.Le.De(t);
+    }
+    de(t) {
+        this.Le.ke(t);
+    }
+    le() {
+        this.Le.Fe();
+    }
+}
+
+/**
+ * Implements `DirectionalIndexByteEncoder` using `OrderedCodeWriter` for the
+ * actual encoding.
+ */ class Ar {
+    constructor() {
+        this.Le = new Ir, this.qe = new Tr(this.Le), this.Ue = new Er(this.Le);
+    }
+    seed(t) {
+        this.Le.seed(t);
+    }
+    Ke(t) {
+        return 0 /* IndexKind.ASCENDING */ === t ? this.qe : this.Ue;
+    }
+    Be() {
+        return this.Le.Be();
+    }
+    reset() {
+        this.Le.reset();
+    }
+}
+
+/**
+ * @license
+ * Copyright 2022 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/** Represents an index entry saved by the SDK in persisted storage. */ class Rr {
+    constructor(t, e, n, s) {
+        this.indexId = t, this.documentKey = e, this.arrayValue = n, this.directionalValue = s;
+    }
+    /**
+     * Returns an IndexEntry entry that sorts immediately after the current
+     * directional value.
+     */    Ge() {
+        const t = this.directionalValue.length, e = 0 === t || 255 === this.directionalValue[t - 1] ? t + 1 : t, n = new Uint8Array(e);
+        return n.set(this.directionalValue, 0), e !== t ? n.set([ 0 ], this.directionalValue.length) : ++n[n.length - 1], 
+        new Rr(this.indexId, this.documentKey, this.arrayValue, n);
+    }
+}
+
+function br(t, e) {
+    let n = t.indexId - e.indexId;
+    return 0 !== n ? n : (n = vr(t.arrayValue, e.arrayValue), 0 !== n ? n : (n = vr(t.directionalValue, e.directionalValue), 
+    0 !== n ? n : ct.comparator(t.documentKey, e.documentKey)));
+}
+
+function vr(t, e) {
+    for (let n = 0; n < t.length && n < e.length; ++n) {
+        const s = t[n] - e[n];
+        if (0 !== s) return s;
+    }
+    return t.length - e.length;
+}
+
+/**
+ * @license
+ * Copyright 2022 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * A light query planner for Firestore.
+ *
+ * This class matches a `FieldIndex` against a Firestore Query `Target`. It
+ * determines whether a given index can be used to serve the specified target.
+ *
+ * The following table showcases some possible index configurations:
+ *
+ * Query                                               | Index
+ * -----------------------------------------------------------------------------
+ * where('a', '==', 'a').where('b', '==', 'b')         | a ASC, b DESC
+ * where('a', '==', 'a').where('b', '==', 'b')         | a ASC
+ * where('a', '==', 'a').where('b', '==', 'b')         | b DESC
+ * where('a', '>=', 'a').orderBy('a')                  | a ASC
+ * where('a', '>=', 'a').orderBy('a', 'desc')          | a DESC
+ * where('a', '>=', 'a').orderBy('a').orderBy('b')     | a ASC, b ASC
+ * where('a', '>=', 'a').orderBy('a').orderBy('b')     | a ASC
+ * where('a', 'array-contains', 'a').orderBy('b')      | a CONTAINS, b ASCENDING
+ * where('a', 'array-contains', 'a').orderBy('b')      | a CONTAINS
+ */ class Pr {
+    constructor(t) {
+        this.collectionId = null != t.collectionGroup ? t.collectionGroup : t.path.lastSegment(), 
+        this.Qe = t.orderBy, this.je = [];
+        for (const e of t.filters) {
+            const t = e;
+            t.isInequality() ? this.ze = t : this.je.push(t);
+        }
+    }
+    /**
+     * Returns whether the index can be used to serve the TargetIndexMatcher's
+     * target.
+     *
+     * An index is considered capable of serving the target when:
+     * - The target uses all index segments for its filters and orderBy clauses.
+     *   The target can have additional filter and orderBy clauses, but not
+     *   fewer.
+     * - If an ArrayContains/ArrayContainsAnyfilter is used, the index must also
+     *   have a corresponding `CONTAINS` segment.
+     * - All directional index segments can be mapped to the target as a series of
+     *   equality filters, a single inequality filter and a series of orderBy
+     *   clauses.
+     * - The segments that represent the equality filters may appear out of order.
+     * - The optional segment for the inequality filter must appear after all
+     *   equality segments.
+     * - The segments that represent that orderBy clause of the target must appear
+     *   in order after all equality and inequality segments. Single orderBy
+     *   clauses cannot be skipped, but a continuous orderBy suffix may be
+     *   omitted.
+     */    We(t) {
+        M$1(t.collectionGroup === this.collectionId);
+        // If there is an array element, find a matching filter.
+        const e = ht(t);
+        if (void 0 !== e && !this.He(e)) return !1;
+        const n = lt(t);
+        let s = 0, i = 0;
+        // Process all equalities first. Equalities can appear out of order.
+        for (;s < n.length && this.He(n[s]); ++s) ;
+        // If we already have processed all segments, all segments are used to serve
+        // the equality filters and we do not need to map any segments to the
+        // target's inequality and orderBy clauses.
+                if (s === n.length) return !0;
+        // If there is an inequality filter, the next segment must match both the
+        // filter and the first orderBy clause.
+                if (void 0 !== this.ze) {
+            const t = n[s];
+            if (!this.Je(this.ze, t) || !this.Ye(this.Qe[i++], t)) return !1;
+            ++s;
+        }
+        // All remaining segments need to represent the prefix of the target's
+        // orderBy.
+                for (;s < n.length; ++s) {
+            const t = n[s];
+            if (i >= this.Qe.length || !this.Ye(this.Qe[i++], t)) return !1;
+        }
+        return !0;
+    }
+    He(t) {
+        for (const e of this.je) if (this.Je(e, t)) return !0;
+        return !1;
+    }
+    Je(t, e) {
+        if (void 0 === t || !t.field.isEqual(e.fieldPath)) return !1;
+        const n = "array-contains" /* Operator.ARRAY_CONTAINS */ === t.op || "array-contains-any" /* Operator.ARRAY_CONTAINS_ANY */ === t.op;
+        return 2 /* IndexKind.CONTAINS */ === e.kind === n;
+    }
+    Ye(t, e) {
+        return !!t.field.isEqual(e.fieldPath) && (0 /* IndexKind.ASCENDING */ === e.kind && "asc" /* Direction.ASCENDING */ === t.dir || 1 /* IndexKind.DESCENDING */ === e.kind && "desc" /* Direction.DESCENDING */ === t.dir);
+    }
+}
+
+/**
+ * @license
+ * Copyright 2022 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Provides utility functions that help with boolean logic transformations needed for handling
+ * complex filters used in queries.
+ */
+/**
+ * The `in` filter is only a syntactic sugar over a disjunction of equalities. For instance: `a in
+ * [1,2,3]` is in fact `a==1 || a==2 || a==3`. This method expands any `in` filter in the given
+ * input into a disjunction of equality filters and returns the expanded filter.
+ */ function Vr(t) {
+    var e, n;
+    if (M$1(t instanceof Ve || t instanceof Se), t instanceof Ve) {
+        if (t instanceof Ke) {
+            const s = (null === (n = null === (e = t.value.arrayValue) || void 0 === e ? void 0 : e.values) || void 0 === n ? void 0 : n.map((e => Ve.create(t.field, "==" /* Operator.EQUAL */ , e)))) || [];
+            return Se.create(s, "or" /* CompositeOperator.OR */);
+        }
+        // We have reached other kinds of field filters.
+        return t;
+    }
+    // We have a composite filter.
+        const s = t.filters.map((t => Vr(t)));
+    return Se.create(s, t.op);
+}
+
+/**
+ * Given a composite filter, returns the list of terms in its disjunctive normal form.
+ *
+ * <p>Each element in the return value is one term of the resulting DNF. For instance: For the
+ * input: (A || B) && C, the DNF form is: (A && C) || (B && C), and the return value is a list
+ * with two elements: a composite filter that performs (A && C), and a composite filter that
+ * performs (B && C).
+ *
+ * @param filter the composite filter to calculate DNF transform for.
+ * @return the terms in the DNF transform.
+ */ function Sr(t) {
+    if (0 === t.getFilters().length) return [];
+    const e = Nr(Vr(t));
+    return M$1(xr(e)), Dr(e) || Cr(e) ? [ e ] : e.getFilters();
+}
+
+/** Returns true if the given filter is a single field filter. e.g. (a == 10). */ function Dr(t) {
+    return t instanceof Ve;
+}
+
+/**
+ * Returns true if the given filter is the conjunction of one or more field filters. e.g. (a == 10
+ * && b == 20)
+ */ function Cr(t) {
+    return t instanceof Se && xe(t);
+}
+
+/**
+ * Returns whether or not the given filter is in disjunctive normal form (DNF).
+ *
+ * <p>In boolean logic, a disjunctive normal form (DNF) is a canonical normal form of a logical
+ * formula consisting of a disjunction of conjunctions; it can also be described as an OR of ANDs.
+ *
+ * <p>For more info, visit: https://en.wikipedia.org/wiki/Disjunctive_normal_form
+ */ function xr(t) {
+    return Dr(t) || Cr(t) || 
+    /**
+ * Returns true if the given filter is the disjunction of one or more "flat conjunctions" and
+ * field filters. e.g. (a == 10) || (b==20 && c==30)
+ */
+    function(t) {
+        if (t instanceof Se && Ce(t)) {
+            for (const e of t.getFilters()) if (!Dr(e) && !Cr(e)) return !1;
+            return !0;
+        }
+        return !1;
+    }(t);
+}
+
+function Nr(t) {
+    if (M$1(t instanceof Ve || t instanceof Se), t instanceof Ve) return t;
+    if (1 === t.filters.length) return Nr(t.filters[0]);
+    // Compute DNF for each of the subfilters first
+        const e = t.filters.map((t => Nr(t)));
+    let n = Se.create(e, t.op);
+    return n = Mr(n), xr(n) ? n : (M$1(n instanceof Se), M$1(De(n)), M$1(n.filters.length > 1), 
+    n.filters.reduce(((t, e) => kr(t, e))));
+}
+
+function kr(t, e) {
+    let n;
+    return M$1(t instanceof Ve || t instanceof Se), M$1(e instanceof Ve || e instanceof Se), 
+    // FieldFilter FieldFilter
+    n = t instanceof Ve ? e instanceof Ve ? function(t, e) {
+        // Conjunction distribution for two field filters is the conjunction of them.
+        return Se.create([ t, e ], "and" /* CompositeOperator.AND */);
+    }(t, e) : Or(t, e) : e instanceof Ve ? Or(e, t) : function(t, e) {
+        // There are four cases:
+        // (A & B) & (C & D) --> (A & B & C & D)
+        // (A & B) & (C | D) --> (A & B & C) | (A & B & D)
+        // (A | B) & (C & D) --> (C & D & A) | (C & D & B)
+        // (A | B) & (C | D) --> (A & C) | (A & D) | (B & C) | (B & D)
+        // Case 1 is a merge.
+        if (M$1(t.filters.length > 0 && e.filters.length > 0), De(t) && De(e)) return Me(t, e.getFilters());
+        // Case 2,3,4 all have at least one side (lhs or rhs) that is a disjunction. In all three cases
+        // we should take each element of the disjunction and distribute it over the other side, and
+        // return the disjunction of the distribution results.
+                const n = Ce(t) ? t : e, s = Ce(t) ? e : t, i = n.filters.map((t => kr(t, s)));
+        return Se.create(i, "or" /* CompositeOperator.OR */);
+    }(t, e), Mr(n);
+}
+
+function Or(t, e) {
+    // There are two cases:
+    // A & (B & C) --> (A & B & C)
+    // A & (B | C) --> (A & B) | (A & C)
+    if (De(e)) 
+    // Case 1
+    return Me(e, t.getFilters());
+    {
+        // Case 2
+        const n = e.filters.map((e => kr(t, e)));
+        return Se.create(n, "or" /* CompositeOperator.OR */);
+    }
+}
+
+/**
+ * Applies the associativity property to the given filter and returns the resulting filter.
+ *
+ * <ul>
+ *   <li>A | (B | C) == (A | B) | C == (A | B | C)
+ *   <li>A & (B & C) == (A & B) & C == (A & B & C)
+ * </ul>
+ *
+ * <p>For more info, visit: https://en.wikipedia.org/wiki/Associative_property#Propositional_logic
+ */ function Mr(t) {
+    if (M$1(t instanceof Ve || t instanceof Se), t instanceof Ve) return t;
+    const e = t.getFilters();
+    // If the composite filter only contains 1 filter, apply associativity to it.
+        if (1 === e.length) return Mr(e[0]);
+    // Associativity applied to a flat composite filter results is itself.
+        if (Ne(t)) return t;
+    // First apply associativity to all subfilters. This will in turn recursively apply
+    // associativity to all nested composite filters and field filters.
+        const n = e.map((t => Mr(t))), s = [];
+    // For composite subfilters that perform the same kind of logical operation as `compositeFilter`
+    // take out their filters and add them to `compositeFilter`. For example:
+    // compositeFilter = (A | (B | C | D))
+    // compositeSubfilter = (B | C | D)
+    // Result: (A | B | C | D)
+    // Note that the `compositeSubfilter` has been eliminated, and its filters (B, C, D) have been
+    // added to the top-level "compositeFilter".
+        return n.forEach((e => {
+        e instanceof Ve ? s.push(e) : e instanceof Se && (e.op === t.op ? 
+        // compositeFilter: (A | (B | C))
+        // compositeSubfilter: (B | C)
+        // Result: (A | B | C)
+        s.push(...e.filters) : 
+        // compositeFilter: (A | (B & C))
+        // compositeSubfilter: (B & C)
+        // Result: (A | (B & C))
+        s.push(e));
+    })), 1 === s.length ? s[0] : Se.create(s, t.op);
 }
 
 /**
@@ -14528,6 +21859,934 @@ function cr(t) {
 
 /**
  * @license
+ * Copyright 2019 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */ const Br = new Uint8Array(0);
+
+/**
+ * A persisted implementation of IndexManager.
+ *
+ * PORTING NOTE: Unlike iOS and Android, the Web SDK does not memoize index
+ * data as it supports multi-tab access.
+ */
+class Lr {
+    constructor(t, e) {
+        this.user = t, this.databaseId = e, 
+        /**
+         * An in-memory copy of the index entries we've already written since the SDK
+         * launched. Used to avoid re-writing the same entry repeatedly.
+         *
+         * This is *NOT* a complete cache of what's in persistence and so can never be
+         * used to satisfy reads.
+         */
+        this.Xe = new $r, 
+        /**
+         * Maps from a target to its equivalent list of sub-targets. Each sub-target
+         * contains only one term from the target's disjunctive normal form (DNF).
+         */
+        this.tn = new ws((t => un(t)), ((t, e) => cn(t, e))), this.uid = t.uid || "";
+    }
+    /**
+     * Adds a new entry to the collection parent index.
+     *
+     * Repeated calls for the same collectionPath should be avoided within a
+     * transaction as IndexedDbIndexManager only caches writes once a transaction
+     * has been committed.
+     */    addToCollectionParentIndex(t, e) {
+        if (!this.Xe.has(e)) {
+            const n = e.lastSegment(), s = e.popLast();
+            t.addOnCommittedListener((() => {
+                // Add the collection to the in memory cache only if the transaction was
+                // successfully committed.
+                this.Xe.add(e);
+            }));
+            const i = {
+                collectionId: n,
+                parent: Ii(s)
+            };
+            return qr(t).put(i);
+        }
+        return At.resolve();
+    }
+    getCollectionParents(t, e) {
+        const n = [], s = IDBKeyRange.bound([ e, "" ], [ et(e), "" ], 
+        /*lowerOpen=*/ !1, 
+        /*upperOpen=*/ !0);
+        return qr(t).W(s).next((t => {
+            for (const s of t) {
+                // This collectionId guard shouldn't be necessary (and isn't as long
+                // as we're running in a real browser), but there's a bug in
+                // indexeddbshim that breaks our range in our tests running in node:
+                // https://github.com/axemclion/IndexedDBShim/issues/334
+                if (s.collectionId !== e) break;
+                n.push(Ai(s.parent));
+            }
+            return n;
+        }));
+    }
+    addFieldIndex(t, e) {
+        // TODO(indexing): Verify that the auto-incrementing index ID works in
+        // Safari & Firefox.
+        const n = Kr(t), s = function(t) {
+            return {
+                indexId: t.indexId,
+                collectionGroup: t.collectionGroup,
+                fields: t.fields.map((t => [ t.fieldPath.canonicalString(), t.kind ]))
+            };
+        }(e);
+        delete s.indexId;
+        // `indexId` is auto-populated by IndexedDb
+        const i = n.add(s);
+        if (e.indexState) {
+            const n = Gr(t);
+            return i.next((t => {
+                n.put(lr(t, this.user, e.indexState.sequenceNumber, e.indexState.offset));
+            }));
+        }
+        return i.next();
+    }
+    deleteFieldIndex(t, e) {
+        const n = Kr(t), s = Gr(t), i = Ur(t);
+        return n.delete(e.indexId).next((() => s.delete(IDBKeyRange.bound([ e.indexId ], [ e.indexId + 1 ], 
+        /*lowerOpen=*/ !1, 
+        /*upperOpen=*/ !0)))).next((() => i.delete(IDBKeyRange.bound([ e.indexId ], [ e.indexId + 1 ], 
+        /*lowerOpen=*/ !1, 
+        /*upperOpen=*/ !0))));
+    }
+    getDocumentsMatchingTarget(t, e) {
+        const n = Ur(t);
+        let s = !0;
+        const i = new Map;
+        return At.forEach(this.en(e), (e => this.nn(t, e).next((t => {
+            s && (s = !!t), i.set(e, t);
+        })))).next((() => {
+            if (s) {
+                let t = vs();
+                const s = [];
+                return At.forEach(i, ((i, r) => {
+                    var o;
+                    C$1("IndexedDbIndexManager", `Using index ${o = i, `id=${o.indexId}|cg=${o.collectionGroup}|f=${o.fields.map((t => `${t.fieldPath}:${t.kind}`)).join(",")}`} to execute ${un(e)}`);
+                    const u = function(t, e) {
+                        const n = ht(e);
+                        if (void 0 === n) return null;
+                        for (const e of hn(t, n.fieldPath)) switch (e.op) {
+                          case "array-contains-any" /* Operator.ARRAY_CONTAINS_ANY */ :
+                            return e.value.arrayValue.values || [];
+
+                          case "array-contains" /* Operator.ARRAY_CONTAINS */ :
+                            return [ e.value ];
+                            // Remaining filters are not array filters.
+                                                }
+                        return null;
+                    }
+                    /**
+ * Returns the list of values that are used in != or NOT_IN filters. Returns
+ * `null` if there are no such filters.
+ */ (r, i), c = function(t, e) {
+                        const n = new Map;
+                        for (const s of lt(e)) for (const e of hn(t, s.fieldPath)) switch (e.op) {
+                          case "==" /* Operator.EQUAL */ :
+                          case "in" /* Operator.IN */ :
+                            // Encode equality prefix, which is encoded in the index value before
+                            // the inequality (e.g. `a == 'a' && b != 'b'` is encoded to
+                            // `value != 'ab'`).
+                            n.set(s.fieldPath.canonicalString(), e.value);
+                            break;
+
+                          case "not-in" /* Operator.NOT_IN */ :
+                          case "!=" /* Operator.NOT_EQUAL */ :
+                            // NotIn/NotEqual is always a suffix. There cannot be any remaining
+                            // segments and hence we can return early here.
+                            return n.set(s.fieldPath.canonicalString(), e.value), Array.from(n.values());
+                            // Remaining filters cannot be used as notIn bounds.
+                                                }
+                        return null;
+                    }
+                    /**
+ * Returns a lower bound of field values that can be used as a starting point to
+ * scan the index defined by `fieldIndex`. Returns `MIN_VALUE` if no lower bound
+ * exists.
+ */ (r, i), a = function(t, e) {
+                        const n = [];
+                        let s = !0;
+                        // For each segment, retrieve a lower bound if there is a suitable filter or
+                        // startAt.
+                                                for (const i of lt(e)) {
+                            const e = 0 /* IndexKind.ASCENDING */ === i.kind ? ln(t, i.fieldPath, t.startAt) : fn(t, i.fieldPath, t.startAt);
+                            n.push(e.value), s && (s = e.inclusive);
+                        }
+                        return new Re(n, s);
+                    }
+                    /**
+ * Returns an upper bound of field values that can be used as an ending point
+ * when scanning the index defined by `fieldIndex`. Returns `MAX_VALUE` if no
+ * upper bound exists.
+ */ (r, i), h = function(t, e) {
+                        const n = [];
+                        let s = !0;
+                        // For each segment, retrieve an upper bound if there is a suitable filter or
+                        // endAt.
+                                                for (const i of lt(e)) {
+                            const e = 0 /* IndexKind.ASCENDING */ === i.kind ? fn(t, i.fieldPath, t.endAt) : ln(t, i.fieldPath, t.endAt);
+                            n.push(e.value), s && (s = e.inclusive);
+                        }
+                        return new Re(n, s);
+                    }(r, i), l = this.sn(i, r, a), f = this.sn(i, r, h), d = this.rn(i, r, c), _ = this.on(i.indexId, u, l, a.inclusive, f, h.inclusive, d);
+                    return At.forEach(_, (i => n.J(i, e.limit).next((e => {
+                        e.forEach((e => {
+                            const n = ct.fromSegments(e.documentKey);
+                            t.has(n) || (t = t.add(n), s.push(n));
+                        }));
+                    }))));
+                })).next((() => s));
+            }
+            return At.resolve(null);
+        }));
+    }
+    en(t) {
+        let e = this.tn.get(t);
+        if (e) return e;
+        if (0 === t.filters.length) e = [ t ]; else {
+            e = Sr(Se.create(t.filters, "and" /* CompositeOperator.AND */)).map((e => on(t.path, t.collectionGroup, t.orderBy, e.getFilters(), t.limit, t.startAt, t.endAt)));
+        }
+        return this.tn.set(t, e), e;
+    }
+    /**
+     * Constructs a key range query on `DbIndexEntryStore` that unions all
+     * bounds.
+     */    on(t, e, n, s, i, r, o) {
+        // The number of total index scans we union together. This is similar to a
+        // distributed normal form, but adapted for array values. We create a single
+        // index range per value in an ARRAY_CONTAINS or ARRAY_CONTAINS_ANY filter
+        // combined with the values from the query bounds.
+        const u = (null != e ? e.length : 1) * Math.max(n.length, i.length), c = u / (null != e ? e.length : 1), a = [];
+        for (let h = 0; h < u; ++h) {
+            const u = e ? this.un(e[h / c]) : Br, l = this.cn(t, u, n[h % c], s), f = this.an(t, u, i[h % c], r), d = o.map((e => this.cn(t, u, e, 
+            /* inclusive= */ !0)));
+            a.push(...this.createRange(l, f, d));
+        }
+        return a;
+    }
+    /** Generates the lower bound for `arrayValue` and `directionalValue`. */    cn(t, e, n, s) {
+        const i = new Rr(t, ct.empty(), e, n);
+        return s ? i : i.Ge();
+    }
+    /** Generates the upper bound for `arrayValue` and `directionalValue`. */    an(t, e, n, s) {
+        const i = new Rr(t, ct.empty(), e, n);
+        return s ? i.Ge() : i;
+    }
+    nn(t, e) {
+        const n = new Pr(e), s = null != e.collectionGroup ? e.collectionGroup : e.path.lastSegment();
+        return this.getFieldIndexes(t, s).next((t => {
+            // Return the index with the most number of segments.
+            let e = null;
+            for (const s of t) {
+                n.We(s) && (!e || s.fields.length > e.fields.length) && (e = s);
+            }
+            return e;
+        }));
+    }
+    getIndexType(t, e) {
+        let n = 2 /* IndexType.FULL */;
+        const s = this.en(e);
+        return At.forEach(s, (e => this.nn(t, e).next((t => {
+            t ? 0 /* IndexType.NONE */ !== n && t.fields.length < function(t) {
+                let e = new Ye(ut.comparator), n = !1;
+                for (const s of t.filters) for (const t of s.getFlattenedFilters()) 
+                // __name__ is not an explicit segment of any index, so we don't need to
+                // count it.
+                t.field.isKeyField() || (
+                // ARRAY_CONTAINS or ARRAY_CONTAINS_ANY filters must be counted separately.
+                // For instance, it is possible to have an index for "a ARRAY a ASC". Even
+                // though these are on the same field, they should be counted as two
+                // separate segments in an index.
+                "array-contains" /* Operator.ARRAY_CONTAINS */ === t.op || "array-contains-any" /* Operator.ARRAY_CONTAINS_ANY */ === t.op ? n = !0 : e = e.add(t.field));
+                for (const n of t.orderBy) 
+                // __name__ is not an explicit segment of any index, so we don't need to
+                // count it.
+                n.field.isKeyField() || (e = e.add(n.field));
+                return e.size + (n ? 1 : 0);
+            }(e) && (n = 1 /* IndexType.PARTIAL */) : n = 0 /* IndexType.NONE */;
+        })))).next((() => 
+        // OR queries have more than one sub-target (one sub-target per DNF term). We currently consider
+        // OR queries that have a `limit` to have a partial index. For such queries we perform sorting
+        // and apply the limit in memory as a post-processing step.
+        function(t) {
+            return null !== t.limit;
+        }(e) && s.length > 1 && 2 /* IndexType.FULL */ === n ? 1 /* IndexType.PARTIAL */ : n));
+    }
+    /**
+     * Returns the byte encoded form of the directional values in the field index.
+     * Returns `null` if the document does not have all fields specified in the
+     * index.
+     */    hn(t, e) {
+        const n = new Ar;
+        for (const s of lt(t)) {
+            const t = e.data.field(s.fieldPath);
+            if (null == t) return null;
+            const i = n.Ke(s.kind);
+            gr.Ee.ae(t, i);
+        }
+        return n.Be();
+    }
+    /** Encodes a single value to the ascending index format. */    un(t) {
+        const e = new Ar;
+        return gr.Ee.ae(t, e.Ke(0 /* IndexKind.ASCENDING */)), e.Be();
+    }
+    /**
+     * Returns an encoded form of the document key that sorts based on the key
+     * ordering of the field index.
+     */    ln(t, e) {
+        const n = new Ar;
+        return gr.Ee.ae(fe(this.databaseId, e), n.Ke(function(t) {
+            const e = lt(t);
+            return 0 === e.length ? 0 /* IndexKind.ASCENDING */ : e[e.length - 1].kind;
+        }(t))), n.Be();
+    }
+    /**
+     * Encodes the given field values according to the specification in `target`.
+     * For IN queries, a list of possible values is returned.
+     */    rn(t, e, n) {
+        if (null === n) return [];
+        let s = [];
+        s.push(new Ar);
+        let i = 0;
+        for (const r of lt(t)) {
+            const t = n[i++];
+            for (const n of s) if (this.fn(e, r.fieldPath) && _e(t)) s = this.dn(s, r, t); else {
+                const e = n.Ke(r.kind);
+                gr.Ee.ae(t, e);
+            }
+        }
+        return this._n(s);
+    }
+    /**
+     * Encodes the given bounds according to the specification in `target`. For IN
+     * queries, a list of possible values is returned.
+     */    sn(t, e, n) {
+        return this.rn(t, e, n.position);
+    }
+    /** Returns the byte representation for the provided encoders. */    _n(t) {
+        const e = [];
+        for (let n = 0; n < t.length; ++n) e[n] = t[n].Be();
+        return e;
+    }
+    /**
+     * Creates a separate encoder for each element of an array.
+     *
+     * The method appends each value to all existing encoders (e.g. filter("a",
+     * "==", "a1").filter("b", "in", ["b1", "b2"]) becomes ["a1,b1", "a1,b2"]). A
+     * list of new encoders is returned.
+     */    dn(t, e, n) {
+        const s = [ ...t ], i = [];
+        for (const t of n.arrayValue.values || []) for (const n of s) {
+            const s = new Ar;
+            s.seed(n.Be()), gr.Ee.ae(t, s.Ke(e.kind)), i.push(s);
+        }
+        return i;
+    }
+    fn(t, e) {
+        return !!t.filters.find((t => t instanceof Ve && t.field.isEqual(e) && ("in" /* Operator.IN */ === t.op || "not-in" /* Operator.NOT_IN */ === t.op)));
+    }
+    getFieldIndexes(t, e) {
+        const n = Kr(t), s = Gr(t);
+        return (e ? n.W("collectionGroupIndex", IDBKeyRange.bound(e, e)) : n.W()).next((t => {
+            const e = [];
+            return At.forEach(t, (t => s.get([ t.indexId, this.uid ]).next((n => {
+                e.push(function(t, e) {
+                    const n = e ? new wt(e.sequenceNumber, new yt(ir(e.readTime), new ct(Ai(e.documentKey)), e.largestBatchId)) : wt.empty(), s = t.fields.map((([t, e]) => new dt(ut.fromServerFormat(t), e)));
+                    return new at(t.indexId, t.collectionGroup, s, n);
+                }(t, n));
+            })))).next((() => e));
+        }));
+    }
+    getNextCollectionGroupToUpdate(t) {
+        return this.getFieldIndexes(t).next((t => 0 === t.length ? null : (t.sort(((t, e) => {
+            const n = t.indexState.sequenceNumber - e.indexState.sequenceNumber;
+            return 0 !== n ? n : X(t.collectionGroup, e.collectionGroup);
+        })), t[0].collectionGroup)));
+    }
+    updateCollectionGroup(t, e, n) {
+        const s = Kr(t), i = Gr(t);
+        return this.wn(t).next((t => s.W("collectionGroupIndex", IDBKeyRange.bound(e, e)).next((e => At.forEach(e, (e => i.put(lr(e.indexId, this.user, t, n))))))));
+    }
+    updateIndexEntries(t, e) {
+        // Porting Note: `getFieldIndexes()` on Web does not cache index lookups as
+        // it could be used across different IndexedDB transactions. As any cached
+        // data might be invalidated by other multi-tab clients, we can only trust
+        // data within a single IndexedDB transaction. We therefore add a cache
+        // here.
+        const n = new Map;
+        return At.forEach(e, ((e, s) => {
+            const i = n.get(e.collectionGroup);
+            return (i ? At.resolve(i) : this.getFieldIndexes(t, e.collectionGroup)).next((i => (n.set(e.collectionGroup, i), 
+            At.forEach(i, (n => this.mn(t, e, n).next((e => {
+                const i = this.gn(s, n);
+                return e.isEqual(i) ? At.resolve() : this.yn(t, s, n, e, i);
+            })))))));
+        }));
+    }
+    pn(t, e, n, s) {
+        return Ur(t).put({
+            indexId: s.indexId,
+            uid: this.uid,
+            arrayValue: s.arrayValue,
+            directionalValue: s.directionalValue,
+            orderedDocumentKey: this.ln(n, e.key),
+            documentKey: e.key.path.toArray()
+        });
+    }
+    In(t, e, n, s) {
+        return Ur(t).delete([ s.indexId, this.uid, s.arrayValue, s.directionalValue, this.ln(n, e.key), e.key.path.toArray() ]);
+    }
+    mn(t, e, n) {
+        const s = Ur(t);
+        let i = new Ye(br);
+        return s.X({
+            index: "documentKeyIndex",
+            range: IDBKeyRange.only([ n.indexId, this.uid, this.ln(n, e) ])
+        }, ((t, s) => {
+            i = i.add(new Rr(n.indexId, e, s.arrayValue, s.directionalValue));
+        })).next((() => i));
+    }
+    /** Creates the index entries for the given document. */    gn(t, e) {
+        let n = new Ye(br);
+        const s = this.hn(e, t);
+        if (null == s) return n;
+        const i = ht(e);
+        if (null != i) {
+            const r = t.data.field(i.fieldPath);
+            if (_e(r)) for (const i of r.arrayValue.values || []) n = n.add(new Rr(e.indexId, t.key, this.un(i), s));
+        } else n = n.add(new Rr(e.indexId, t.key, Br, s));
+        return n;
+    }
+    /**
+     * Updates the index entries for the provided document by deleting entries
+     * that are no longer referenced in `newEntries` and adding all newly added
+     * entries.
+     */    yn(t, e, n, s, i) {
+        C$1("IndexedDbIndexManager", "Updating index entries for document '%s'", e.key);
+        const r = [];
+        return function(t, e, n, s, i) {
+            const r = t.getIterator(), o = e.getIterator();
+            let u = Xe(r), c = Xe(o);
+            // Walk through the two sets at the same time, using the ordering defined by
+            // `comparator`.
+            for (;u || c; ) {
+                let t = !1, e = !1;
+                if (u && c) {
+                    const s = n(u, c);
+                    s < 0 ? 
+                    // The element was removed if the next element in our ordered
+                    // walkthrough is only in `before`.
+                    e = !0 : s > 0 && (
+                    // The element was added if the next element in our ordered walkthrough
+                    // is only in `after`.
+                    t = !0);
+                } else null != u ? e = !0 : t = !0;
+                t ? (s(c), c = Xe(o)) : e ? (i(u), u = Xe(r)) : (u = Xe(r), c = Xe(o));
+            }
+        }(s, i, br, (
+        /* onAdd= */ s => {
+            r.push(this.pn(t, e, n, s));
+        }), (
+        /* onRemove= */ s => {
+            r.push(this.In(t, e, n, s));
+        })), At.waitFor(r);
+    }
+    wn(t) {
+        let e = 1;
+        return Gr(t).X({
+            index: "sequenceNumberIndex",
+            reverse: !0,
+            range: IDBKeyRange.upperBound([ this.uid, Number.MAX_SAFE_INTEGER ])
+        }, ((t, n, s) => {
+            s.done(), e = n.sequenceNumber + 1;
+        })).next((() => e));
+    }
+    /**
+     * Returns a new set of IDB ranges that splits the existing range and excludes
+     * any values that match the `notInValue` from these ranges. As an example,
+     * '[foo > 2 && foo != 3]` becomes  `[foo > 2 && < 3, foo > 3]`.
+     */    createRange(t, e, n) {
+        // The notIn values need to be sorted and unique so that we can return a
+        // sorted set of non-overlapping ranges.
+        n = n.sort(((t, e) => br(t, e))).filter(((t, e, n) => !e || 0 !== br(t, n[e - 1])));
+        const s = [];
+        s.push(t);
+        for (const i of n) {
+            const n = br(i, t), r = br(i, e);
+            if (0 === n) 
+            // `notInValue` is the lower bound. We therefore need to raise the bound
+            // to the next value.
+            s[0] = t.Ge(); else if (n > 0 && r < 0) 
+            // `notInValue` is in the middle of the range
+            s.push(i), s.push(i.Ge()); else if (r > 0) 
+            // `notInValue` (and all following values) are out of the range
+            break;
+        }
+        s.push(e);
+        const i = [];
+        for (let t = 0; t < s.length; t += 2) {
+            // If we encounter two bounds that will create an unmatchable key range,
+            // then we return an empty set of key ranges.
+            if (this.Tn(s[t], s[t + 1])) return [];
+            const e = [ s[t].indexId, this.uid, s[t].arrayValue, s[t].directionalValue, Br, [] ], n = [ s[t + 1].indexId, this.uid, s[t + 1].arrayValue, s[t + 1].directionalValue, Br, [] ];
+            i.push(IDBKeyRange.bound(e, n));
+        }
+        return i;
+    }
+    Tn(t, e) {
+        // If lower bound is greater than the upper bound, then the key
+        // range can never be matched.
+        return br(t, e) > 0;
+    }
+    getMinOffsetFromCollectionGroup(t, e) {
+        return this.getFieldIndexes(t, e).next(Qr);
+    }
+    getMinOffset(t, e) {
+        return At.mapArray(this.en(e), (e => this.nn(t, e).next((t => t || O())))).next(Qr);
+    }
+}
+
+/**
+ * Helper to get a typed SimpleDbStore for the collectionParents
+ * document store.
+ */ function qr(t) {
+    return Wi(t, "collectionParents");
+}
+
+/**
+ * Helper to get a typed SimpleDbStore for the index entry object store.
+ */ function Ur(t) {
+    return Wi(t, "indexEntries");
+}
+
+/**
+ * Helper to get a typed SimpleDbStore for the index configuration object store.
+ */ function Kr(t) {
+    return Wi(t, "indexConfiguration");
+}
+
+/**
+ * Helper to get a typed SimpleDbStore for the index state object store.
+ */ function Gr(t) {
+    return Wi(t, "indexState");
+}
+
+function Qr(t) {
+    M$1(0 !== t.length);
+    let e = t[0].indexState.offset, n = e.largestBatchId;
+    for (let s = 1; s < t.length; s++) {
+        const i = t[s].indexState.offset;
+        pt(i, e) < 0 && (e = i), n < i.largestBatchId && (n = i.largestBatchId);
+    }
+    return new yt(e.readTime, e.documentKey, n);
+}
+
+/**
+ * @license
+ * Copyright 2018 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */ const jr = {
+    didRun: !1,
+    sequenceNumbersCollected: 0,
+    targetsRemoved: 0,
+    documentsRemoved: 0
+};
+
+class zr {
+    constructor(
+    // When we attempt to collect, we will only do so if the cache size is greater than this
+    // threshold. Passing `COLLECTION_DISABLED` here will cause collection to always be skipped.
+    t, 
+    // The percentage of sequence numbers that we will attempt to collect
+    e, 
+    // A cap on the total number of sequence numbers that will be collected. This prevents
+    // us from collecting a huge number of sequence numbers if the cache has grown very large.
+    n) {
+        this.cacheSizeCollectionThreshold = t, this.percentileToCollect = e, this.maximumSequenceNumbersToCollect = n;
+    }
+    static withCacheSize(t) {
+        return new zr(t, zr.DEFAULT_COLLECTION_PERCENTILE, zr.DEFAULT_MAX_SEQUENCE_NUMBERS_TO_COLLECT);
+    }
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Delete a mutation batch and the associated document mutations.
+ * @returns A PersistencePromise of the document mutations that were removed.
+ */
+function Wr(t, e, n) {
+    const s = t.store("mutations"), i = t.store("documentMutations"), r = [], o = IDBKeyRange.only(n.batchId);
+    let u = 0;
+    const c = s.X({
+        range: o
+    }, ((t, e, n) => (u++, n.delete())));
+    r.push(c.next((() => {
+        M$1(1 === u);
+    })));
+    const a = [];
+    for (const t of n.mutations) {
+        const s = vi(e, t.key.path, n.batchId);
+        r.push(i.delete(s)), a.push(t.key);
+    }
+    return At.waitFor(r).next((() => a));
+}
+
+/**
+ * Returns an approximate size for the given document.
+ */ function Hr(t) {
+    if (!t) return 0;
+    let e;
+    if (t.document) e = t.document; else if (t.unknownDocument) e = t.unknownDocument; else {
+        if (!t.noDocument) throw O();
+        e = t.noDocument;
+    }
+    return JSON.stringify(e).length;
+}
+
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/** A mutation queue for a specific user, backed by IndexedDB. */ zr.DEFAULT_COLLECTION_PERCENTILE = 10, 
+zr.DEFAULT_MAX_SEQUENCE_NUMBERS_TO_COLLECT = 1e3, zr.DEFAULT = new zr(41943040, zr.DEFAULT_COLLECTION_PERCENTILE, zr.DEFAULT_MAX_SEQUENCE_NUMBERS_TO_COLLECT), 
+zr.DISABLED = new zr(-1, 0, 0);
+
+class Jr {
+    constructor(
+    /**
+     * The normalized userId (e.g. null UID => "" userId) used to store /
+     * retrieve mutations.
+     */
+    t, e, n, s) {
+        this.userId = t, this.Tt = e, this.indexManager = n, this.referenceDelegate = s, 
+        /**
+         * Caches the document keys for pending mutation batches. If the mutation
+         * has been removed from IndexedDb, the cached value may continue to
+         * be used to retrieve the batch's document keys. To remove a cached value
+         * locally, `removeCachedMutationKeys()` should be invoked either directly
+         * or through `removeMutationBatches()`.
+         *
+         * With multi-tab, when the primary client acknowledges or rejects a mutation,
+         * this cache is used by secondary clients to invalidate the local
+         * view of the documents that were previously affected by the mutation.
+         */
+        // PORTING NOTE: Multi-tab only.
+        this.En = {};
+    }
+    /**
+     * Creates a new mutation queue for the given user.
+     * @param user - The user for which to create a mutation queue.
+     * @param serializer - The serializer to use when persisting to IndexedDb.
+     */    static ue(t, e, n, s) {
+        // TODO(mcg): Figure out what constraints there are on userIDs
+        // In particular, are there any reserved characters? are empty ids allowed?
+        // For the moment store these together in the same mutations table assuming
+        // that empty userIDs aren't allowed.
+        M$1("" !== t.uid);
+        const i = t.isAuthenticated() ? t.uid : "";
+        return new Jr(i, e, n, s);
+    }
+    checkEmpty(t) {
+        let e = !0;
+        const n = IDBKeyRange.bound([ this.userId, Number.NEGATIVE_INFINITY ], [ this.userId, Number.POSITIVE_INFINITY ]);
+        return Zr(t).X({
+            index: "userMutationsIndex",
+            range: n
+        }, ((t, n, s) => {
+            e = !1, s.done();
+        })).next((() => e));
+    }
+    addMutationBatch(t, e, n, s) {
+        const i = Xr(t), r = Zr(t);
+        // The IndexedDb implementation in Chrome (and Firefox) does not handle
+        // compound indices that include auto-generated keys correctly. To ensure
+        // that the index entry is added correctly in all browsers, we perform two
+        // writes: The first write is used to retrieve the next auto-generated Batch
+        // ID, and the second write populates the index and stores the actual
+        // mutation batch.
+        // See: https://bugs.chromium.org/p/chromium/issues/detail?id=701972
+        // We write an empty object to obtain key
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return r.add({}).next((o => {
+            M$1("number" == typeof o);
+            const u = new Hi(o, e, n, s), c = function(t, e, n) {
+                const s = n.baseMutations.map((e => ii(t.oe, e))), i = n.mutations.map((e => ii(t.oe, e)));
+                return {
+                    userId: e,
+                    batchId: n.batchId,
+                    localWriteTimeMs: n.localWriteTime.toMillis(),
+                    baseMutations: s,
+                    mutations: i
+                };
+            }(this.Tt, this.userId, u), a = [];
+            let h = new Ye(((t, e) => X(t.canonicalString(), e.canonicalString())));
+            for (const t of s) {
+                const e = vi(this.userId, t.key.path, o);
+                h = h.add(t.key.path.popLast()), a.push(r.put(c)), a.push(i.put(e, Pi));
+            }
+            return h.forEach((e => {
+                a.push(this.indexManager.addToCollectionParentIndex(t, e));
+            })), t.addOnCommittedListener((() => {
+                this.En[o] = u.keys();
+            })), At.waitFor(a).next((() => u));
+        }));
+    }
+    lookupMutationBatch(t, e) {
+        return Zr(t).get(e).next((t => t ? (M$1(t.userId === this.userId), rr(this.Tt, t)) : null));
+    }
+    /**
+     * Returns the document keys for the mutation batch with the given batchId.
+     * For primary clients, this method returns `null` after
+     * `removeMutationBatches()` has been called. Secondary clients return a
+     * cached result until `removeCachedMutationKeys()` is invoked.
+     */
+    // PORTING NOTE: Multi-tab only.
+    An(t, e) {
+        return this.En[e] ? At.resolve(this.En[e]) : this.lookupMutationBatch(t, e).next((t => {
+            if (t) {
+                const n = t.keys();
+                return this.En[e] = n, n;
+            }
+            return null;
+        }));
+    }
+    getNextMutationBatchAfterBatchId(t, e) {
+        const n = e + 1, s = IDBKeyRange.lowerBound([ this.userId, n ]);
+        let i = null;
+        return Zr(t).X({
+            index: "userMutationsIndex",
+            range: s
+        }, ((t, e, s) => {
+            e.userId === this.userId && (M$1(e.batchId >= n), i = rr(this.Tt, e)), s.done();
+        })).next((() => i));
+    }
+    getHighestUnacknowledgedBatchId(t) {
+        const e = IDBKeyRange.upperBound([ this.userId, Number.POSITIVE_INFINITY ]);
+        let n = -1;
+        return Zr(t).X({
+            index: "userMutationsIndex",
+            range: e,
+            reverse: !0
+        }, ((t, e, s) => {
+            n = e.batchId, s.done();
+        })).next((() => n));
+    }
+    getAllMutationBatches(t) {
+        const e = IDBKeyRange.bound([ this.userId, -1 ], [ this.userId, Number.POSITIVE_INFINITY ]);
+        return Zr(t).W("userMutationsIndex", e).next((t => t.map((t => rr(this.Tt, t)))));
+    }
+    getAllMutationBatchesAffectingDocumentKey(t, e) {
+        // Scan the document-mutation index starting with a prefix starting with
+        // the given documentKey.
+        const n = bi(this.userId, e.path), s = IDBKeyRange.lowerBound(n), i = [];
+        return Xr(t).X({
+            range: s
+        }, ((n, s, r) => {
+            const [o, u, c] = n, a = Ai(u);
+            // Only consider rows matching exactly the specific key of
+            // interest. Note that because we order by path first, and we
+            // order terminators before path separators, we'll encounter all
+            // the index rows for documentKey contiguously. In particular, all
+            // the rows for documentKey will occur before any rows for
+            // documents nested in a subcollection beneath documentKey so we
+            // can stop as soon as we hit any such row.
+                        if (o === this.userId && e.path.isEqual(a)) 
+            // Look up the mutation batch in the store.
+            return Zr(t).get(c).next((t => {
+                if (!t) throw O();
+                M$1(t.userId === this.userId), i.push(rr(this.Tt, t));
+            }));
+            r.done();
+        })).next((() => i));
+    }
+    getAllMutationBatchesAffectingDocumentKeys(t, e) {
+        let n = new Ye(X);
+        const s = [];
+        return e.forEach((e => {
+            const i = bi(this.userId, e.path), r = IDBKeyRange.lowerBound(i), o = Xr(t).X({
+                range: r
+            }, ((t, s, i) => {
+                const [r, o, u] = t, c = Ai(o);
+                // Only consider rows matching exactly the specific key of
+                // interest. Note that because we order by path first, and we
+                // order terminators before path separators, we'll encounter all
+                // the index rows for documentKey contiguously. In particular, all
+                // the rows for documentKey will occur before any rows for
+                // documents nested in a subcollection beneath documentKey so we
+                // can stop as soon as we hit any such row.
+                                r === this.userId && e.path.isEqual(c) ? n = n.add(u) : i.done();
+            }));
+            s.push(o);
+        })), At.waitFor(s).next((() => this.Rn(t, n)));
+    }
+    getAllMutationBatchesAffectingQuery(t, e) {
+        const n = e.path, s = n.length + 1, i = bi(this.userId, n), r = IDBKeyRange.lowerBound(i);
+        // Collect up unique batchIDs encountered during a scan of the index. Use a
+        // SortedSet to accumulate batch IDs so they can be traversed in order in a
+        // scan of the main table.
+        let o = new Ye(X);
+        return Xr(t).X({
+            range: r
+        }, ((t, e, i) => {
+            const [r, u, c] = t, a = Ai(u);
+            r === this.userId && n.isPrefixOf(a) ? 
+            // Rows with document keys more than one segment longer than the
+            // query path can't be matches. For example, a query on 'rooms'
+            // can't match the document /rooms/abc/messages/xyx.
+            // TODO(mcg): we'll need a different scanner when we implement
+            // ancestor queries.
+            a.length === s && (o = o.add(c)) : i.done();
+        })).next((() => this.Rn(t, o)));
+    }
+    Rn(t, e) {
+        const n = [], s = [];
+        // TODO(rockwood): Implement this using iterate.
+        return e.forEach((e => {
+            s.push(Zr(t).get(e).next((t => {
+                if (null === t) throw O();
+                M$1(t.userId === this.userId), n.push(rr(this.Tt, t));
+            })));
+        })), At.waitFor(s).next((() => n));
+    }
+    removeMutationBatch(t, e) {
+        return Wr(t.re, this.userId, e).next((n => (t.addOnCommittedListener((() => {
+            this.bn(e.batchId);
+        })), At.forEach(n, (e => this.referenceDelegate.markPotentiallyOrphaned(t, e))))));
+    }
+    /**
+     * Clears the cached keys for a mutation batch. This method should be
+     * called by secondary clients after they process mutation updates.
+     *
+     * Note that this method does not have to be called from primary clients as
+     * the corresponding cache entries are cleared when an acknowledged or
+     * rejected batch is removed from the mutation queue.
+     */
+    // PORTING NOTE: Multi-tab only
+    bn(t) {
+        delete this.En[t];
+    }
+    performConsistencyCheck(t) {
+        return this.checkEmpty(t).next((e => {
+            if (!e) return At.resolve();
+            // Verify that there are no entries in the documentMutations index if
+            // the queue is empty.
+                        const n = IDBKeyRange.lowerBound([ this.userId ]);
+            const s = [];
+            return Xr(t).X({
+                range: n
+            }, ((t, e, n) => {
+                if (t[0] === this.userId) {
+                    const e = Ai(t[1]);
+                    s.push(e);
+                } else n.done();
+            })).next((() => {
+                M$1(0 === s.length);
+            }));
+        }));
+    }
+    containsKey(t, e) {
+        return Yr(t, this.userId, e);
+    }
+    // PORTING NOTE: Multi-tab only (state is held in memory in other clients).
+    /** Returns the mutation queue's metadata from IndexedDb. */
+    vn(t) {
+        return to(t).get(this.userId).next((t => t || {
+            userId: this.userId,
+            lastAcknowledgedBatchId: -1,
+            lastStreamToken: ""
+        }));
+    }
+}
+
+/**
+ * @returns true if the mutation queue for the given user contains a pending
+ *         mutation for the given key.
+ */ function Yr(t, e, n) {
+    const s = bi(e, n.path), i = s[1], r = IDBKeyRange.lowerBound(s);
+    let o = !1;
+    return Xr(t).X({
+        range: r,
+        Z: !0
+    }, ((t, n, s) => {
+        const [r, u, /*batchID*/ c] = t;
+        r === e && u === i && (o = !0), s.done();
+    })).next((() => o));
+}
+
+/** Returns true if any mutation queue contains the given document. */
+/**
+ * Helper to get a typed SimpleDbStore for the mutations object store.
+ */
+function Zr(t) {
+    return Wi(t, "mutations");
+}
+
+/**
+ * Helper to get a typed SimpleDbStore for the mutationQueues object store.
+ */ function Xr(t) {
+    return Wi(t, "documentMutations");
+}
+
+/**
+ * Helper to get a typed SimpleDbStore for the mutationQueues object store.
+ */ function to(t) {
+    return Wi(t, "mutationQueues");
+}
+
+/**
+ * @license
  * Copyright 2017 Google LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14575,6 +22834,463 @@ class eo {
         // Sync engine assigns target IDs for limbo document detection.
         return new eo(-1);
     }
+}
+
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */ class no {
+    constructor(t, e) {
+        this.referenceDelegate = t, this.Tt = e;
+    }
+    // PORTING NOTE: We don't cache global metadata for the target cache, since
+    // some of it (in particular `highestTargetId`) can be modified by secondary
+    // tabs. We could perhaps be more granular (and e.g. still cache
+    // `lastRemoteSnapshotVersion` in memory) but for simplicity we currently go
+    // to IndexedDb whenever we need to read metadata. We can revisit if it turns
+    // out to have a meaningful performance impact.
+    allocateTargetId(t) {
+        return this.Dn(t).next((e => {
+            const n = new eo(e.highestTargetId);
+            return e.highestTargetId = n.next(), this.Cn(t, e).next((() => e.highestTargetId));
+        }));
+    }
+    getLastRemoteSnapshotVersion(t) {
+        return this.Dn(t).next((t => st.fromTimestamp(new nt(t.lastRemoteSnapshotVersion.seconds, t.lastRemoteSnapshotVersion.nanoseconds))));
+    }
+    getHighestSequenceNumber(t) {
+        return this.Dn(t).next((t => t.highestListenSequenceNumber));
+    }
+    setTargetsMetadata(t, e, n) {
+        return this.Dn(t).next((s => (s.highestListenSequenceNumber = e, n && (s.lastRemoteSnapshotVersion = n.toTimestamp()), 
+        e > s.highestListenSequenceNumber && (s.highestListenSequenceNumber = e), this.Cn(t, s))));
+    }
+    addTargetData(t, e) {
+        return this.xn(t, e).next((() => this.Dn(t).next((n => (n.targetCount += 1, this.Nn(e, n), 
+        this.Cn(t, n))))));
+    }
+    updateTargetData(t, e) {
+        return this.xn(t, e);
+    }
+    removeTargetData(t, e) {
+        return this.removeMatchingKeysForTargetId(t, e.targetId).next((() => so(t).delete(e.targetId))).next((() => this.Dn(t))).next((e => (M$1(e.targetCount > 0), 
+        e.targetCount -= 1, this.Cn(t, e))));
+    }
+    /**
+     * Drops any targets with sequence number less than or equal to the upper bound, excepting those
+     * present in `activeTargetIds`. Document associations for the removed targets are also removed.
+     * Returns the number of targets removed.
+     */    removeTargets(t, e, n) {
+        let s = 0;
+        const i = [];
+        return so(t).X(((r, o) => {
+            const u = or(o);
+            u.sequenceNumber <= e && null === n.get(u.targetId) && (s++, i.push(this.removeTargetData(t, u)));
+        })).next((() => At.waitFor(i))).next((() => s));
+    }
+    /**
+     * Call provided function with each `TargetData` that we have cached.
+     */    forEachTarget(t, e) {
+        return so(t).X(((t, n) => {
+            const s = or(n);
+            e(s);
+        }));
+    }
+    Dn(t) {
+        return io(t).get("targetGlobalKey").next((t => (M$1(null !== t), t)));
+    }
+    Cn(t, e) {
+        return io(t).put("targetGlobalKey", e);
+    }
+    xn(t, e) {
+        return so(t).put(ur(this.Tt, e));
+    }
+    /**
+     * In-place updates the provided metadata to account for values in the given
+     * TargetData. Saving is done separately. Returns true if there were any
+     * changes to the metadata.
+     */    Nn(t, e) {
+        let n = !1;
+        return t.targetId > e.highestTargetId && (e.highestTargetId = t.targetId, n = !0), 
+        t.sequenceNumber > e.highestListenSequenceNumber && (e.highestListenSequenceNumber = t.sequenceNumber, 
+        n = !0), n;
+    }
+    getTargetCount(t) {
+        return this.Dn(t).next((t => t.targetCount));
+    }
+    getTargetData(t, e) {
+        // Iterating by the canonicalId may yield more than one result because
+        // canonicalId values are not required to be unique per target. This query
+        // depends on the queryTargets index to be efficient.
+        const n = un(e), s = IDBKeyRange.bound([ n, Number.NEGATIVE_INFINITY ], [ n, Number.POSITIVE_INFINITY ]);
+        let i = null;
+        return so(t).X({
+            range: s,
+            index: "queryTargetsIndex"
+        }, ((t, n, s) => {
+            const r = or(n);
+            // After finding a potential match, check that the target is
+            // actually equal to the requested target.
+                        cn(e, r.target) && (i = r, s.done());
+        })).next((() => i));
+    }
+    addMatchingKeys(t, e, n) {
+        // PORTING NOTE: The reverse index (documentsTargets) is maintained by
+        // IndexedDb.
+        const s = [], i = ro(t);
+        return e.forEach((e => {
+            const r = Ii(e.path);
+            s.push(i.put({
+                targetId: n,
+                path: r
+            })), s.push(this.referenceDelegate.addReference(t, n, e));
+        })), At.waitFor(s);
+    }
+    removeMatchingKeys(t, e, n) {
+        // PORTING NOTE: The reverse index (documentsTargets) is maintained by
+        // IndexedDb.
+        const s = ro(t);
+        return At.forEach(e, (e => {
+            const i = Ii(e.path);
+            return At.waitFor([ s.delete([ n, i ]), this.referenceDelegate.removeReference(t, n, e) ]);
+        }));
+    }
+    removeMatchingKeysForTargetId(t, e) {
+        const n = ro(t), s = IDBKeyRange.bound([ e ], [ e + 1 ], 
+        /*lowerOpen=*/ !1, 
+        /*upperOpen=*/ !0);
+        return n.delete(s);
+    }
+    getMatchingKeysForTargetId(t, e) {
+        const n = IDBKeyRange.bound([ e ], [ e + 1 ], 
+        /*lowerOpen=*/ !1, 
+        /*upperOpen=*/ !0), s = ro(t);
+        let i = vs();
+        return s.X({
+            range: n,
+            Z: !0
+        }, ((t, e, n) => {
+            const s = Ai(t[1]), r = new ct(s);
+            i = i.add(r);
+        })).next((() => i));
+    }
+    containsKey(t, e) {
+        const n = Ii(e.path), s = IDBKeyRange.bound([ n ], [ et(n) ], 
+        /*lowerOpen=*/ !1, 
+        /*upperOpen=*/ !0);
+        let i = 0;
+        return ro(t).X({
+            index: "documentTargetsIndex",
+            Z: !0,
+            range: s
+        }, (([t, e], n, s) => {
+            // Having a sentinel row for a document does not count as containing that document;
+            // For the target cache, containing the document means the document is part of some
+            // target.
+            0 !== t && (i++, s.done());
+        })).next((() => i > 0));
+    }
+    /**
+     * Looks up a TargetData entry by target ID.
+     *
+     * @param targetId - The target ID of the TargetData entry to look up.
+     * @returns The cached TargetData entry, or null if the cache has no entry for
+     * the target.
+     */
+    // PORTING NOTE: Multi-tab only.
+    ie(t, e) {
+        return so(t).get(e).next((t => t ? or(t) : null));
+    }
+}
+
+/**
+ * Helper to get a typed SimpleDbStore for the queries object store.
+ */ function so(t) {
+    return Wi(t, "targets");
+}
+
+/**
+ * Helper to get a typed SimpleDbStore for the target globals object store.
+ */ function io(t) {
+    return Wi(t, "targetGlobal");
+}
+
+/**
+ * Helper to get a typed SimpleDbStore for the document target object store.
+ */ function ro(t) {
+    return Wi(t, "targetDocuments");
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */ function oo([t, e], [n, s]) {
+    const i = X(t, n);
+    return 0 === i ? X(e, s) : i;
+}
+
+/**
+ * Used to calculate the nth sequence number. Keeps a rolling buffer of the
+ * lowest n values passed to `addElement`, and finally reports the largest of
+ * them in `maxValue`.
+ */ class uo {
+    constructor(t) {
+        this.kn = t, this.buffer = new Ye(oo), this.On = 0;
+    }
+    Mn() {
+        return ++this.On;
+    }
+    Fn(t) {
+        const e = [ t, this.Mn() ];
+        if (this.buffer.size < this.kn) this.buffer = this.buffer.add(e); else {
+            const t = this.buffer.last();
+            oo(e, t) < 0 && (this.buffer = this.buffer.delete(t).add(e));
+        }
+    }
+    get maxValue() {
+        // Guaranteed to be non-empty. If we decide we are not collecting any
+        // sequence numbers, nthSequenceNumber below short-circuits. If we have
+        // decided that we are collecting n sequence numbers, it's because n is some
+        // percentage of the existing sequence numbers. That means we should never
+        // be in a situation where we are collecting sequence numbers but don't
+        // actually have any.
+        return this.buffer.last()[0];
+    }
+}
+
+/**
+ * This class is responsible for the scheduling of LRU garbage collection. It handles checking
+ * whether or not GC is enabled, as well as which delay to use before the next run.
+ */ class co {
+    constructor(t, e, n) {
+        this.garbageCollector = t, this.asyncQueue = e, this.localStore = n, this.$n = null;
+    }
+    start() {
+        -1 !== this.garbageCollector.params.cacheSizeCollectionThreshold && this.Bn(6e4);
+    }
+    stop() {
+        this.$n && (this.$n.cancel(), this.$n = null);
+    }
+    get started() {
+        return null !== this.$n;
+    }
+    Bn(t) {
+        C$1("LruGarbageCollector", `Garbage collection scheduled in ${t}ms`), this.$n = this.asyncQueue.enqueueAfterDelay("lru_garbage_collection" /* TimerId.LruGarbageCollection */ , t, (async () => {
+            this.$n = null;
+            try {
+                await this.localStore.collectGarbage(this.garbageCollector);
+            } catch (t) {
+                Vt(t) ? C$1("LruGarbageCollector", "Ignoring IndexedDB error during garbage collection: ", t) : await Et(t);
+            }
+            await this.Bn(3e5);
+        }));
+    }
+}
+
+/** Implements the steps for LRU garbage collection. */ class ao {
+    constructor(t, e) {
+        this.Ln = t, this.params = e;
+    }
+    calculateTargetCount(t, e) {
+        return this.Ln.qn(t).next((t => Math.floor(e / 100 * t)));
+    }
+    nthSequenceNumber(t, e) {
+        if (0 === e) return At.resolve(Ot.at);
+        const n = new uo(e);
+        return this.Ln.forEachTarget(t, (t => n.Fn(t.sequenceNumber))).next((() => this.Ln.Un(t, (t => n.Fn(t))))).next((() => n.maxValue));
+    }
+    removeTargets(t, e, n) {
+        return this.Ln.removeTargets(t, e, n);
+    }
+    removeOrphanedDocuments(t, e) {
+        return this.Ln.removeOrphanedDocuments(t, e);
+    }
+    collect(t, e) {
+        return -1 === this.params.cacheSizeCollectionThreshold ? (C$1("LruGarbageCollector", "Garbage collection skipped; disabled"), 
+        At.resolve(jr)) : this.getCacheSize(t).next((n => n < this.params.cacheSizeCollectionThreshold ? (C$1("LruGarbageCollector", `Garbage collection skipped; Cache size ${n} is lower than threshold ${this.params.cacheSizeCollectionThreshold}`), 
+        jr) : this.Kn(t, e)));
+    }
+    getCacheSize(t) {
+        return this.Ln.getCacheSize(t);
+    }
+    Kn(t, e) {
+        let n, s, i, r, o, c, a;
+        const h = Date.now();
+        return this.calculateTargetCount(t, this.params.percentileToCollect).next((e => (
+        // Cap at the configured max
+        e > this.params.maximumSequenceNumbersToCollect ? (C$1("LruGarbageCollector", `Capping sequence numbers to collect down to the maximum of ${this.params.maximumSequenceNumbersToCollect} from ${e}`), 
+        s = this.params.maximumSequenceNumbersToCollect) : s = e, r = Date.now(), this.nthSequenceNumber(t, s)))).next((s => (n = s, 
+        o = Date.now(), this.removeTargets(t, n, e)))).next((e => (i = e, c = Date.now(), 
+        this.removeOrphanedDocuments(t, n)))).next((t => {
+            if (a = Date.now(), S$1() <= LogLevel.DEBUG) {
+                C$1("LruGarbageCollector", `LRU Garbage Collection\n\tCounted targets in ${r - h}ms\n\tDetermined least recently used ${s} in ` + (o - r) + "ms\n" + `\tRemoved ${i} targets in ` + (c - o) + "ms\n" + `\tRemoved ${t} documents in ` + (a - c) + "ms\n" + `Total Duration: ${a - h}ms`);
+            }
+            return At.resolve({
+                didRun: !0,
+                sequenceNumbersCollected: s,
+                targetsRemoved: i,
+                documentsRemoved: t
+            });
+        }));
+    }
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/** Provides LRU functionality for IndexedDB persistence. */
+class ho {
+    constructor(t, e) {
+        this.db = t, this.garbageCollector = function(t, e) {
+            return new ao(t, e);
+        }(this, e);
+    }
+    qn(t) {
+        const e = this.Gn(t);
+        return this.db.getTargetCache().getTargetCount(t).next((t => e.next((e => t + e))));
+    }
+    Gn(t) {
+        let e = 0;
+        return this.Un(t, (t => {
+            e++;
+        })).next((() => e));
+    }
+    forEachTarget(t, e) {
+        return this.db.getTargetCache().forEachTarget(t, e);
+    }
+    Un(t, e) {
+        return this.Qn(t, ((t, n) => e(n)));
+    }
+    addReference(t, e, n) {
+        return lo(t, n);
+    }
+    removeReference(t, e, n) {
+        return lo(t, n);
+    }
+    removeTargets(t, e, n) {
+        return this.db.getTargetCache().removeTargets(t, e, n);
+    }
+    markPotentiallyOrphaned(t, e) {
+        return lo(t, e);
+    }
+    /**
+     * Returns true if anything would prevent this document from being garbage
+     * collected, given that the document in question is not present in any
+     * targets and has a sequence number less than or equal to the upper bound for
+     * the collection run.
+     */    jn(t, e) {
+        return function(t, e) {
+            let n = !1;
+            return to(t).tt((s => Yr(t, s, e).next((t => (t && (n = !0), At.resolve(!t)))))).next((() => n));
+        }(t, e);
+    }
+    removeOrphanedDocuments(t, e) {
+        const n = this.db.getRemoteDocumentCache().newChangeBuffer(), s = [];
+        let i = 0;
+        return this.Qn(t, ((r, o) => {
+            if (o <= e) {
+                const e = this.jn(t, r).next((e => {
+                    if (!e) 
+                    // Our size accounting requires us to read all documents before
+                    // removing them.
+                    return i++, n.getEntry(t, r).next((() => (n.removeEntry(r, st.min()), ro(t).delete([ 0, Ii(r.path) ]))));
+                }));
+                s.push(e);
+            }
+        })).next((() => At.waitFor(s))).next((() => n.apply(t))).next((() => i));
+    }
+    removeTarget(t, e) {
+        const n = e.withSequenceNumber(t.currentSequenceNumber);
+        return this.db.getTargetCache().updateTargetData(t, n);
+    }
+    updateLimboDocument(t, e) {
+        return lo(t, e);
+    }
+    /**
+     * Call provided function for each document in the cache that is 'orphaned'. Orphaned
+     * means not a part of any target, so the only entry in the target-document index for
+     * that document will be the sentinel row (targetId 0), which will also have the sequence
+     * number for the last time the document was accessed.
+     */    Qn(t, e) {
+        const n = ro(t);
+        let s, i = Ot.at;
+        return n.X({
+            index: "documentTargetsIndex"
+        }, (([t, n], {path: r, sequenceNumber: o}) => {
+            0 === t ? (
+            // if nextToReport is valid, report it, this is a new key so the
+            // last one must not be a member of any targets.
+            i !== Ot.at && e(new ct(Ai(s)), i), 
+            // set nextToReport to be this sequence number. It's the next one we
+            // might report, if we don't find any targets for this document.
+            // Note that the sequence number must be defined when the targetId
+            // is 0.
+            i = o, s = r) : 
+            // set nextToReport to be invalid, we know we don't need to report
+            // this one since we found a target for it.
+            i = Ot.at;
+        })).next((() => {
+            // Since we report sequence numbers after getting to the next key, we
+            // need to check if the last key we iterated over was an orphaned
+            // document and report it.
+            i !== Ot.at && e(new ct(Ai(s)), i);
+        }));
+    }
+    getCacheSize(t) {
+        return this.db.getRemoteDocumentCache().getSize(t);
+    }
+}
+
+function lo(t, e) {
+    return ro(t).put(
+    /**
+ * @returns A value suitable for writing a sentinel row in the target-document
+ * store.
+ */
+    function(t, e) {
+        return {
+            targetId: 0,
+            path: Ii(t.path),
+            sequenceNumber: e
+        };
+    }(e, t.currentSequenceNumber));
 }
 
 /**
@@ -14661,6 +23377,309 @@ class eo {
         return this.assertNotApplied(), this.changesApplied = !0, this.applyChanges(t);
     }
     /** Helper to assert this.changes is not null  */    assertNotApplied() {}
+}
+
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * The RemoteDocumentCache for IndexedDb. To construct, invoke
+ * `newIndexedDbRemoteDocumentCache()`.
+ */ class _o {
+    constructor(t) {
+        this.Tt = t;
+    }
+    setIndexManager(t) {
+        this.indexManager = t;
+    }
+    /**
+     * Adds the supplied entries to the cache.
+     *
+     * All calls of `addEntry` are required to go through the RemoteDocumentChangeBuffer
+     * returned by `newChangeBuffer()` to ensure proper accounting of metadata.
+     */    addEntry(t, e, n) {
+        return yo(t).put(n);
+    }
+    /**
+     * Removes a document from the cache.
+     *
+     * All calls of `removeEntry`  are required to go through the RemoteDocumentChangeBuffer
+     * returned by `newChangeBuffer()` to ensure proper accounting of metadata.
+     */    removeEntry(t, e, n) {
+        return yo(t).delete(
+        /**
+ * Returns a key that can be used for document lookups via the primary key of
+ * the DbRemoteDocument object store.
+ */
+        function(t, e) {
+            const n = t.path.toArray();
+            return [ 
+            /* prefix path */ n.slice(0, n.length - 2), 
+            /* collection id */ n[n.length - 2], nr(e), 
+            /* document id */ n[n.length - 1] ];
+        }
+        /**
+ * Returns a key that can be used for document lookups on the
+ * `DbRemoteDocumentDocumentCollectionGroupIndex` index.
+ */ (e, n));
+    }
+    /**
+     * Updates the current cache size.
+     *
+     * Callers to `addEntry()` and `removeEntry()` *must* call this afterwards to update the
+     * cache's metadata.
+     */    updateMetadata(t, e) {
+        return this.getMetadata(t).next((n => (n.byteSize += e, this.zn(t, n))));
+    }
+    getEntry(t, e) {
+        let n = sn.newInvalidDocument(e);
+        return yo(t).X({
+            index: "documentKeyIndex",
+            range: IDBKeyRange.only(po(e))
+        }, ((t, s) => {
+            n = this.Wn(e, s);
+        })).next((() => n));
+    }
+    /**
+     * Looks up an entry in the cache.
+     *
+     * @param documentKey - The key of the entry to look up.
+     * @returns The cached document entry and its size.
+     */    Hn(t, e) {
+        let n = {
+            size: 0,
+            document: sn.newInvalidDocument(e)
+        };
+        return yo(t).X({
+            index: "documentKeyIndex",
+            range: IDBKeyRange.only(po(e))
+        }, ((t, s) => {
+            n = {
+                document: this.Wn(e, s),
+                size: Hr(s)
+            };
+        })).next((() => n));
+    }
+    getEntries(t, e) {
+        let n = gs();
+        return this.Jn(t, e, ((t, e) => {
+            const s = this.Wn(t, e);
+            n = n.insert(t, s);
+        })).next((() => n));
+    }
+    /**
+     * Looks up several entries in the cache.
+     *
+     * @param documentKeys - The set of keys entries to look up.
+     * @returns A map of documents indexed by key and a map of sizes indexed by
+     *     key (zero if the document does not exist).
+     */    Yn(t, e) {
+        let n = gs(), s = new We(ct.comparator);
+        return this.Jn(t, e, ((t, e) => {
+            const i = this.Wn(t, e);
+            n = n.insert(t, i), s = s.insert(t, Hr(e));
+        })).next((() => ({
+            documents: n,
+            Zn: s
+        })));
+    }
+    Jn(t, e, n) {
+        if (e.isEmpty()) return At.resolve();
+        let s = new Ye(To);
+        e.forEach((t => s = s.add(t)));
+        const i = IDBKeyRange.bound(po(s.first()), po(s.last())), r = s.getIterator();
+        let o = r.getNext();
+        return yo(t).X({
+            index: "documentKeyIndex",
+            range: i
+        }, ((t, e, s) => {
+            const i = ct.fromSegments([ ...e.prefixPath, e.collectionGroup, e.documentId ]);
+            // Go through keys not found in cache.
+                        for (;o && To(o, i) < 0; ) n(o, null), o = r.getNext();
+            o && o.isEqual(i) && (
+            // Key found in cache.
+            n(o, e), o = r.hasNext() ? r.getNext() : null), 
+            // Skip to the next key (if there is one).
+            o ? s.j(po(o)) : s.done();
+        })).next((() => {
+            // The rest of the keys are not in the cache. One case where `iterate`
+            // above won't go through them is when the cache is empty.
+            for (;o; ) n(o, null), o = r.hasNext() ? r.getNext() : null;
+        }));
+    }
+    getDocumentsMatchingQuery(t, e, n, s) {
+        const i = e.path, r = [ i.popLast().toArray(), i.lastSegment(), nr(n.readTime), n.documentKey.path.isEmpty() ? "" : n.documentKey.path.lastSegment() ], o = [ i.popLast().toArray(), i.lastSegment(), [ Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER ], "" ];
+        return yo(t).W(IDBKeyRange.bound(r, o, !0)).next((t => {
+            let n = gs();
+            for (const i of t) {
+                const t = this.Wn(ct.fromSegments(i.prefixPath.concat(i.collectionGroup, i.documentId)), i);
+                t.isFoundDocument() && (Pn(e, t) || s.has(t.key)) && (
+                // Either the document matches the given query, or it is mutated.
+                n = n.insert(t.key, t));
+            }
+            return n;
+        }));
+    }
+    getAllFromCollectionGroup(t, e, n, s) {
+        let i = gs();
+        const r = Io(e, n), o = Io(e, yt.max());
+        return yo(t).X({
+            index: "collectionGroupIndex",
+            range: IDBKeyRange.bound(r, o, !0)
+        }, ((t, e, n) => {
+            const r = this.Wn(ct.fromSegments(e.prefixPath.concat(e.collectionGroup, e.documentId)), e);
+            i = i.insert(r.key, r), i.size === s && n.done();
+        })).next((() => i));
+    }
+    newChangeBuffer(t) {
+        return new mo(this, !!t && t.trackRemovals);
+    }
+    getSize(t) {
+        return this.getMetadata(t).next((t => t.byteSize));
+    }
+    getMetadata(t) {
+        return go(t).get("remoteDocumentGlobalKey").next((t => (M$1(!!t), t)));
+    }
+    zn(t, e) {
+        return go(t).put("remoteDocumentGlobalKey", e);
+    }
+    /**
+     * Decodes `dbRemoteDoc` and returns the document (or an invalid document if
+     * the document corresponds to the format used for sentinel deletes).
+     */    Wn(t, e) {
+        if (e) {
+            const t = tr(this.Tt, e);
+            // Whether the document is a sentinel removal and should only be used in the
+            // `getNewDocumentChanges()`
+                        if (!(t.isNoDocument() && t.version.isEqual(st.min()))) return t;
+        }
+        return sn.newInvalidDocument(t);
+    }
+}
+
+/** Creates a new IndexedDbRemoteDocumentCache. */ function wo(t) {
+    return new _o(t);
+}
+
+/**
+ * Handles the details of adding and updating documents in the IndexedDbRemoteDocumentCache.
+ *
+ * Unlike the MemoryRemoteDocumentChangeBuffer, the IndexedDb implementation computes the size
+ * delta for all submitted changes. This avoids having to re-read all documents from IndexedDb
+ * when we apply the changes.
+ */ class mo extends fo {
+    /**
+     * @param documentCache - The IndexedDbRemoteDocumentCache to apply the changes to.
+     * @param trackRemovals - Whether to create sentinel deletes that can be tracked by
+     * `getNewDocumentChanges()`.
+     */
+    constructor(t, e) {
+        super(), this.Xn = t, this.trackRemovals = e, 
+        // A map of document sizes and read times prior to applying the changes in
+        // this buffer.
+        this.ts = new ws((t => t.toString()), ((t, e) => t.isEqual(e)));
+    }
+    applyChanges(t) {
+        const e = [];
+        let n = 0, s = new Ye(((t, e) => X(t.canonicalString(), e.canonicalString())));
+        return this.changes.forEach(((i, r) => {
+            const o = this.ts.get(i);
+            if (e.push(this.Xn.removeEntry(t, i, o.readTime)), r.isValidDocument()) {
+                const u = er(this.Xn.Tt, r);
+                s = s.add(i.path.popLast());
+                const c = Hr(u);
+                n += c - o.size, e.push(this.Xn.addEntry(t, i, u));
+            } else if (n -= o.size, this.trackRemovals) {
+                // In order to track removals, we store a "sentinel delete" in the
+                // RemoteDocumentCache. This entry is represented by a NoDocument
+                // with a version of 0 and ignored by `maybeDecodeDocument()` but
+                // preserved in `getNewDocumentChanges()`.
+                const n = er(this.Xn.Tt, r.convertToNoDocument(st.min()));
+                e.push(this.Xn.addEntry(t, i, n));
+            }
+        })), s.forEach((n => {
+            e.push(this.Xn.indexManager.addToCollectionParentIndex(t, n));
+        })), e.push(this.Xn.updateMetadata(t, n)), At.waitFor(e);
+    }
+    getFromCache(t, e) {
+        // Record the size of everything we load from the cache so we can compute a delta later.
+        return this.Xn.Hn(t, e).next((t => (this.ts.set(e, {
+            size: t.size,
+            readTime: t.document.readTime
+        }), t.document)));
+    }
+    getAllFromCache(t, e) {
+        // Record the size of everything we load from the cache so we can compute
+        // a delta later.
+        return this.Xn.Yn(t, e).next((({documents: t, Zn: e}) => (
+        // Note: `getAllFromCache` returns two maps instead of a single map from
+        // keys to `DocumentSizeEntry`s. This is to allow returning the
+        // `MutableDocumentMap` directly, without a conversion.
+        e.forEach(((e, n) => {
+            this.ts.set(e, {
+                size: n,
+                readTime: t.get(e).readTime
+            });
+        })), t)));
+    }
+}
+
+function go(t) {
+    return Wi(t, "remoteDocumentGlobal");
+}
+
+/**
+ * Helper to get a typed SimpleDbStore for the remoteDocuments object store.
+ */ function yo(t) {
+    return Wi(t, "remoteDocumentsV14");
+}
+
+/**
+ * Returns a key that can be used for document lookups on the
+ * `DbRemoteDocumentDocumentKeyIndex` index.
+ */ function po(t) {
+    const e = t.path.toArray();
+    return [ 
+    /* prefix path */ e.slice(0, e.length - 2), 
+    /* collection id */ e[e.length - 2], 
+    /* document id */ e[e.length - 1] ];
+}
+
+function Io(t, e) {
+    const n = e.documentKey.path.toArray();
+    return [ 
+    /* collection id */ t, nr(e.readTime), 
+    /* prefix path */ n.slice(0, n.length - 2), 
+    /* document id */ n.length > 0 ? n[n.length - 1] : "" ];
+}
+
+/**
+ * Comparator that compares document keys according to the primary key sorting
+ * used by the `DbRemoteDocumentDocument` store (by prefix path, collection id
+ * and then document ID).
+ *
+ * Visible for testing.
+ */ function To(t, e) {
+    const n = t.path.toArray(), s = e.path.toArray();
+    // The ordering is based on https://chromium.googlesource.com/chromium/blink/+/fe5c21fef94dae71c1c3344775b8d8a7f7e6d9ec/Source/modules/indexeddb/IDBKey.cpp#74
+    let i = 0;
+    for (let t = 0; t < n.length - 2 && t < s.length - 2; ++t) if (i = X(n[t], s[t]), 
+    i) return i;
+    return i = X(n.length, s.length), i || (i = X(n[n.length - 2], s[s.length - 2]), 
+    i || X(n[n.length - 1], s[s.length - 1]));
 }
 
 /**
@@ -15746,6 +24765,746 @@ class ko {
 
 /**
  * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/** Performs database creation and schema upgrades. */ class Oo {
+    constructor(t) {
+        this.Tt = t;
+    }
+    /**
+     * Performs database creation and schema upgrades.
+     *
+     * Note that in production, this method is only ever used to upgrade the schema
+     * to SCHEMA_VERSION. Different values of toVersion are only used for testing
+     * and local feature development.
+     */    $(t, e, n, s) {
+        const i = new Rt("createOrUpgrade", e);
+        n < 1 && s >= 1 && (function(t) {
+            t.createObjectStore("owner");
+        }(t), function(t) {
+            t.createObjectStore("mutationQueues", {
+                keyPath: "userId"
+            });
+            t.createObjectStore("mutations", {
+                keyPath: "batchId",
+                autoIncrement: !0
+            }).createIndex("userMutationsIndex", Ri, {
+                unique: !0
+            }), t.createObjectStore("documentMutations");
+        }
+        /**
+ * Upgrade function to migrate the 'mutations' store from V1 to V3. Loads
+ * and rewrites all data.
+ */ (t), Mo(t), function(t) {
+            t.createObjectStore("remoteDocuments");
+        }(t));
+        // Migration 2 to populate the targetGlobal object no longer needed since
+        // migration 3 unconditionally clears it.
+                let r = At.resolve();
+        return n < 3 && s >= 3 && (
+        // Brand new clients don't need to drop and recreate--only clients that
+        // potentially have corrupt data.
+        0 !== n && (!function(t) {
+            t.deleteObjectStore("targetDocuments"), t.deleteObjectStore("targets"), t.deleteObjectStore("targetGlobal");
+        }(t), Mo(t)), r = r.next((() => 
+        /**
+ * Creates the target global singleton row.
+ *
+ * @param txn - The version upgrade transaction for indexeddb
+ */
+        function(t) {
+            const e = t.store("targetGlobal"), n = {
+                highestTargetId: 0,
+                highestListenSequenceNumber: 0,
+                lastRemoteSnapshotVersion: st.min().toTimestamp(),
+                targetCount: 0
+            };
+            return e.put("targetGlobalKey", n);
+        }(i)))), n < 4 && s >= 4 && (0 !== n && (
+        // Schema version 3 uses auto-generated keys to generate globally unique
+        // mutation batch IDs (this was previously ensured internally by the
+        // client). To migrate to the new schema, we have to read all mutations
+        // and write them back out. We preserve the existing batch IDs to guarantee
+        // consistency with other object stores. Any further mutation batch IDs will
+        // be auto-generated.
+        r = r.next((() => function(t, e) {
+            return e.store("mutations").W().next((n => {
+                t.deleteObjectStore("mutations");
+                t.createObjectStore("mutations", {
+                    keyPath: "batchId",
+                    autoIncrement: !0
+                }).createIndex("userMutationsIndex", Ri, {
+                    unique: !0
+                });
+                const s = e.store("mutations"), i = n.map((t => s.put(t)));
+                return At.waitFor(i);
+            }));
+        }(t, i)))), r = r.next((() => {
+            !function(t) {
+                t.createObjectStore("clientMetadata", {
+                    keyPath: "clientId"
+                });
+            }(t);
+        }))), n < 5 && s >= 5 && (r = r.next((() => this.Gs(i)))), n < 6 && s >= 6 && (r = r.next((() => (function(t) {
+            t.createObjectStore("remoteDocumentGlobal");
+        }(t), this.Qs(i))))), n < 7 && s >= 7 && (r = r.next((() => this.js(i)))), n < 8 && s >= 8 && (r = r.next((() => this.zs(t, i)))), 
+        n < 9 && s >= 9 && (r = r.next((() => {
+            // Multi-Tab used to manage its own changelog, but this has been moved
+            // to the DbRemoteDocument object store itself. Since the previous change
+            // log only contained transient data, we can drop its object store.
+            !function(t) {
+                t.objectStoreNames.contains("remoteDocumentChanges") && t.deleteObjectStore("remoteDocumentChanges");
+            }(t);
+            // Note: Schema version 9 used to create a read time index for the
+            // RemoteDocumentCache. This is now done with schema version 13.
+                }))), n < 10 && s >= 10 && (r = r.next((() => this.Ws(i)))), n < 11 && s >= 11 && (r = r.next((() => {
+            !function(t) {
+                t.createObjectStore("bundles", {
+                    keyPath: "bundleId"
+                });
+            }(t), function(t) {
+                t.createObjectStore("namedQueries", {
+                    keyPath: "name"
+                });
+            }(t);
+        }))), n < 12 && s >= 12 && (r = r.next((() => {
+            !function(t) {
+                const e = t.createObjectStore("documentOverlays", {
+                    keyPath: Bi
+                });
+                e.createIndex("collectionPathOverlayIndex", Li, {
+                    unique: !1
+                }), e.createIndex("collectionGroupOverlayIndex", qi, {
+                    unique: !1
+                });
+            }(t);
+        }))), n < 13 && s >= 13 && (r = r.next((() => function(t) {
+            const e = t.createObjectStore("remoteDocumentsV14", {
+                keyPath: Vi
+            });
+            e.createIndex("documentKeyIndex", Si), e.createIndex("collectionGroupIndex", Di);
+        }(t))).next((() => this.Hs(t, i))).next((() => t.deleteObjectStore("remoteDocuments")))), 
+        n < 14 && s >= 14 && (r = r.next((() => this.Js(t, i)))), n < 15 && s >= 15 && (r = r.next((() => function(t) {
+            t.createObjectStore("indexConfiguration", {
+                keyPath: "indexId",
+                autoIncrement: !0
+            }).createIndex("collectionGroupIndex", "collectionGroup", {
+                unique: !1
+            });
+            t.createObjectStore("indexState", {
+                keyPath: Oi
+            }).createIndex("sequenceNumberIndex", Mi, {
+                unique: !1
+            });
+            t.createObjectStore("indexEntries", {
+                keyPath: Fi
+            }).createIndex("documentKeyIndex", $i, {
+                unique: !1
+            });
+        }(t)))), r;
+    }
+    Qs(t) {
+        let e = 0;
+        return t.store("remoteDocuments").X(((t, n) => {
+            e += Hr(n);
+        })).next((() => {
+            const n = {
+                byteSize: e
+            };
+            return t.store("remoteDocumentGlobal").put("remoteDocumentGlobalKey", n);
+        }));
+    }
+    Gs(t) {
+        const e = t.store("mutationQueues"), n = t.store("mutations");
+        return e.W().next((e => At.forEach(e, (e => {
+            const s = IDBKeyRange.bound([ e.userId, -1 ], [ e.userId, e.lastAcknowledgedBatchId ]);
+            return n.W("userMutationsIndex", s).next((n => At.forEach(n, (n => {
+                M$1(n.userId === e.userId);
+                const s = rr(this.Tt, n);
+                return Wr(t, e.userId, s).next((() => {}));
+            }))));
+        }))));
+    }
+    /**
+     * Ensures that every document in the remote document cache has a corresponding sentinel row
+     * with a sequence number. Missing rows are given the most recently used sequence number.
+     */    js(t) {
+        const e = t.store("targetDocuments"), n = t.store("remoteDocuments");
+        return t.store("targetGlobal").get("targetGlobalKey").next((t => {
+            const s = [];
+            return n.X(((n, i) => {
+                const r = new rt(n), o = function(t) {
+                    return [ 0, Ii(t) ];
+                }(r);
+                s.push(e.get(o).next((n => n ? At.resolve() : (n => e.put({
+                    targetId: 0,
+                    path: Ii(n),
+                    sequenceNumber: t.highestListenSequenceNumber
+                }))(r))));
+            })).next((() => At.waitFor(s)));
+        }));
+    }
+    zs(t, e) {
+        // Create the index.
+        t.createObjectStore("collectionParents", {
+            keyPath: ki
+        });
+        const n = e.store("collectionParents"), s = new $r, i = t => {
+            if (s.add(t)) {
+                const e = t.lastSegment(), s = t.popLast();
+                return n.put({
+                    collectionId: e,
+                    parent: Ii(s)
+                });
+            }
+        };
+        // Helper to add an index entry iff we haven't already written it.
+                // Index existing remote documents.
+        return e.store("remoteDocuments").X({
+            Z: !0
+        }, ((t, e) => {
+            const n = new rt(t);
+            return i(n.popLast());
+        })).next((() => e.store("documentMutations").X({
+            Z: !0
+        }, (([t, e, n], s) => {
+            const r = Ai(e);
+            return i(r.popLast());
+        }))));
+    }
+    Ws(t) {
+        const e = t.store("targets");
+        return e.X(((t, n) => {
+            const s = or(n), i = ur(this.Tt, s);
+            return e.put(i);
+        }));
+    }
+    Hs(t, e) {
+        const n = e.store("remoteDocuments"), s = [];
+        return n.X(((t, n) => {
+            const i = e.store("remoteDocumentsV14"), r = (o = n, o.document ? new ct(rt.fromString(o.document.name).popFirst(5)) : o.noDocument ? ct.fromSegments(o.noDocument.path) : o.unknownDocument ? ct.fromSegments(o.unknownDocument.path) : O()).path.toArray();
+            var o;
+            /**
+ * @license
+ * Copyright 2017 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */            const u = {
+                prefixPath: r.slice(0, r.length - 2),
+                collectionGroup: r[r.length - 2],
+                documentId: r[r.length - 1],
+                readTime: n.readTime || [ 0, 0 ],
+                unknownDocument: n.unknownDocument,
+                noDocument: n.noDocument,
+                document: n.document,
+                hasCommittedMutations: !!n.hasCommittedMutations
+            };
+            s.push(i.put(u));
+        })).next((() => At.waitFor(s)));
+    }
+    Js(t, e) {
+        const n = e.store("mutations"), s = wo(this.Tt), i = new xo(ko.qs, this.Tt.oe);
+        return n.W().next((t => {
+            const n = new Map;
+            return t.forEach((t => {
+                var e;
+                let s = null !== (e = n.get(t.userId)) && void 0 !== e ? e : vs();
+                rr(this.Tt, t).keys().forEach((t => s = s.add(t))), n.set(t.userId, s);
+            })), At.forEach(n, ((t, n) => {
+                const r = new v$1(n), o = wr.ue(this.Tt, r), u = i.getIndexManager(r), c = Jr.ue(r, this.Tt, u, i.referenceDelegate);
+                return new Ao(s, c, o, u).recalculateAndSaveOverlaysForDocumentKeys(new zi(e, Ot.at), t).next();
+            }));
+        }));
+    }
+}
+
+function Mo(t) {
+    t.createObjectStore("targetDocuments", {
+        keyPath: xi
+    }).createIndex("documentTargetsIndex", Ni, {
+        unique: !0
+    });
+    // NOTE: This is unique only because the TargetId is the suffix.
+    t.createObjectStore("targets", {
+        keyPath: "targetId"
+    }).createIndex("queryTargetsIndex", Ci, {
+        unique: !0
+    }), t.createObjectStore("targetGlobal");
+}
+
+const Fo = "Failed to obtain exclusive access to the persistence layer. To allow shared access, multi-tab synchronization has to be enabled in all tabs. If you are using `experimentalForceOwningTab:true`, make sure that only one tab has persistence enabled at any given time.";
+
+/**
+ * Oldest acceptable age in milliseconds for client metadata before the client
+ * is considered inactive and its associated data is garbage collected.
+ */
+/**
+ * An IndexedDB-backed instance of Persistence. Data is stored persistently
+ * across sessions.
+ *
+ * On Web only, the Firestore SDKs support shared access to its persistence
+ * layer. This allows multiple browser tabs to read and write to IndexedDb and
+ * to synchronize state even without network connectivity. Shared access is
+ * currently optional and not enabled unless all clients invoke
+ * `enablePersistence()` with `{synchronizeTabs:true}`.
+ *
+ * In multi-tab mode, if multiple clients are active at the same time, the SDK
+ * will designate one client as the “primary client”. An effort is made to pick
+ * a visible, network-connected and active client, and this client is
+ * responsible for letting other clients know about its presence. The primary
+ * client writes a unique client-generated identifier (the client ID) to
+ * IndexedDb’s “owner” store every 4 seconds. If the primary client fails to
+ * update this entry, another client can acquire the lease and take over as
+ * primary.
+ *
+ * Some persistence operations in the SDK are designated as primary-client only
+ * operations. This includes the acknowledgment of mutations and all updates of
+ * remote documents. The effects of these operations are written to persistence
+ * and then broadcast to other tabs via LocalStorage (see
+ * `WebStorageSharedClientState`), which then refresh their state from
+ * persistence.
+ *
+ * Similarly, the primary client listens to notifications sent by secondary
+ * clients to discover persistence changes written by secondary clients, such as
+ * the addition of new mutations and query targets.
+ *
+ * If multi-tab is not enabled and another tab already obtained the primary
+ * lease, IndexedDbPersistence enters a failed state and all subsequent
+ * operations will automatically fail.
+ *
+ * Additionally, there is an optimization so that when a tab is closed, the
+ * primary lease is released immediately (this is especially important to make
+ * sure that a refreshed tab is able to immediately re-acquire the primary
+ * lease). Unfortunately, IndexedDB cannot be reliably used in window.unload
+ * since it is an asynchronous API. So in addition to attempting to give up the
+ * lease, the leaseholder writes its client ID to a "zombiedClient" entry in
+ * LocalStorage which acts as an indicator that another tab should go ahead and
+ * take the primary lease immediately regardless of the current lease timestamp.
+ *
+ * TODO(b/114226234): Remove `synchronizeTabs` section when multi-tab is no
+ * longer optional.
+ */
+class $o {
+    constructor(
+    /**
+     * Whether to synchronize the in-memory state of multiple tabs and share
+     * access to local persistence.
+     */
+    t, e, n, s, i, r, o, u, c, 
+    /**
+     * If set to true, forcefully obtains database access. Existing tabs will
+     * no longer be able to access IndexedDB.
+     */
+    a, h = 15) {
+        if (this.allowTabSynchronization = t, this.persistenceKey = e, this.clientId = n, 
+        this.Ys = i, this.window = r, this.document = o, this.Zs = c, this.Xs = a, this.ti = h, 
+        this.Cs = null, this.xs = !1, this.isPrimary = !1, this.networkEnabled = !0, 
+        /** Our window.unload handler, if registered. */
+        this.ei = null, this.inForeground = !1, 
+        /** Our 'visibilitychange' listener if registered. */
+        this.ni = null, 
+        /** The client metadata refresh task. */
+        this.si = null, 
+        /** The last time we garbage collected the client metadata object store. */
+        this.ii = Number.NEGATIVE_INFINITY, 
+        /** A listener to notify on primary state changes. */
+        this.ri = t => Promise.resolve(), !$o.C()) throw new L$1(B.UNIMPLEMENTED, "This platform is either missing IndexedDB or is known to have an incomplete implementation. Offline persistence has been disabled.");
+        this.referenceDelegate = new ho(this, s), this.oi = e + "main", this.Tt = new Xi(u), 
+        this.ui = new bt(this.oi, this.ti, new Oo(this.Tt)), this.Ns = new no(this.referenceDelegate, this.Tt), 
+        this.remoteDocumentCache = wo(this.Tt), this.Os = new fr, this.window && this.window.localStorage ? this.ci = this.window.localStorage : (this.ci = null, 
+        !1 === a && x$1("IndexedDbPersistence", "LocalStorage is unavailable. As a result, persistence may not work reliably. In particular enablePersistence() could fail immediately after refreshing the page."));
+    }
+    /**
+     * Attempt to start IndexedDb persistence.
+     *
+     * @returns Whether persistence was enabled.
+     */    start() {
+        // NOTE: This is expected to fail sometimes (in the case of another tab
+        // already having the persistence lock), so it's the first thing we should
+        // do.
+        return this.ai().then((() => {
+            if (!this.isPrimary && !this.allowTabSynchronization) 
+            // Fail `start()` if `synchronizeTabs` is disabled and we cannot
+            // obtain the primary lease.
+            throw new L$1(B.FAILED_PRECONDITION, Fo);
+            return this.hi(), this.li(), this.fi(), this.runTransaction("getHighestListenSequenceNumber", "readonly", (t => this.Ns.getHighestSequenceNumber(t)));
+        })).then((t => {
+            this.Cs = new Ot(t, this.Zs);
+        })).then((() => {
+            this.xs = !0;
+        })).catch((t => (this.ui && this.ui.close(), Promise.reject(t))));
+    }
+    /**
+     * Registers a listener that gets called when the primary state of the
+     * instance changes. Upon registering, this listener is invoked immediately
+     * with the current primary state.
+     *
+     * PORTING NOTE: This is only used for Web multi-tab.
+     */    di(t) {
+        return this.ri = async e => {
+            if (this.started) return t(e);
+        }, t(this.isPrimary);
+    }
+    /**
+     * Registers a listener that gets called when the database receives a
+     * version change event indicating that it has deleted.
+     *
+     * PORTING NOTE: This is only used for Web multi-tab.
+     */    setDatabaseDeletedListener(t) {
+        this.ui.L((async e => {
+            // Check if an attempt is made to delete IndexedDB.
+            null === e.newVersion && await t();
+        }));
+    }
+    /**
+     * Adjusts the current network state in the client's metadata, potentially
+     * affecting the primary lease.
+     *
+     * PORTING NOTE: This is only used for Web multi-tab.
+     */    setNetworkEnabled(t) {
+        this.networkEnabled !== t && (this.networkEnabled = t, 
+        // Schedule a primary lease refresh for immediate execution. The eventual
+        // lease update will be propagated via `primaryStateListener`.
+        this.Ys.enqueueAndForget((async () => {
+            this.started && await this.ai();
+        })));
+    }
+    /**
+     * Updates the client metadata in IndexedDb and attempts to either obtain or
+     * extend the primary lease for the local client. Asynchronously notifies the
+     * primary state listener if the client either newly obtained or released its
+     * primary lease.
+     */    ai() {
+        return this.runTransaction("updateClientMetadataAndTryBecomePrimary", "readwrite", (t => Lo(t).put({
+            clientId: this.clientId,
+            updateTimeMs: Date.now(),
+            networkEnabled: this.networkEnabled,
+            inForeground: this.inForeground
+        }).next((() => {
+            if (this.isPrimary) return this._i(t).next((t => {
+                t || (this.isPrimary = !1, this.Ys.enqueueRetryable((() => this.ri(!1))));
+            }));
+        })).next((() => this.wi(t))).next((e => this.isPrimary && !e ? this.mi(t).next((() => !1)) : !!e && this.gi(t).next((() => !0)))))).catch((t => {
+            if (Vt(t)) 
+            // Proceed with the existing state. Any subsequent access to
+            // IndexedDB will verify the lease.
+            return C$1("IndexedDbPersistence", "Failed to extend owner lease: ", t), this.isPrimary;
+            if (!this.allowTabSynchronization) throw t;
+            return C$1("IndexedDbPersistence", "Releasing owner lease after error during lease refresh", t), 
+            /* isPrimary= */ !1;
+        })).then((t => {
+            this.isPrimary !== t && this.Ys.enqueueRetryable((() => this.ri(t))), this.isPrimary = t;
+        }));
+    }
+    _i(t) {
+        return Bo(t).get("owner").next((t => At.resolve(this.yi(t))));
+    }
+    pi(t) {
+        return Lo(t).delete(this.clientId);
+    }
+    /**
+     * If the garbage collection threshold has passed, prunes the
+     * RemoteDocumentChanges and the ClientMetadata store based on the last update
+     * time of all clients.
+     */    async Ii() {
+        if (this.isPrimary && !this.Ti(this.ii, 18e5)) {
+            this.ii = Date.now();
+            const t = await this.runTransaction("maybeGarbageCollectMultiClientState", "readwrite-primary", (t => {
+                const e = Wi(t, "clientMetadata");
+                return e.W().next((t => {
+                    const n = this.Ei(t, 18e5), s = t.filter((t => -1 === n.indexOf(t)));
+                    // Delete metadata for clients that are no longer considered active.
+                    return At.forEach(s, (t => e.delete(t.clientId))).next((() => s));
+                }));
+            })).catch((() => []));
+            // Delete potential leftover entries that may continue to mark the
+            // inactive clients as zombied in LocalStorage.
+            // Ideally we'd delete the IndexedDb and LocalStorage zombie entries for
+            // the client atomically, but we can't. So we opt to delete the IndexedDb
+            // entries first to avoid potentially reviving a zombied client.
+                        if (this.ci) for (const e of t) this.ci.removeItem(this.Ai(e.clientId));
+        }
+    }
+    /**
+     * Schedules a recurring timer to update the client metadata and to either
+     * extend or acquire the primary lease if the client is eligible.
+     */    fi() {
+        this.si = this.Ys.enqueueAfterDelay("client_metadata_refresh" /* TimerId.ClientMetadataRefresh */ , 4e3, (() => this.ai().then((() => this.Ii())).then((() => this.fi()))));
+    }
+    /** Checks whether `client` is the local client. */    yi(t) {
+        return !!t && t.ownerId === this.clientId;
+    }
+    /**
+     * Evaluate the state of all active clients and determine whether the local
+     * client is or can act as the holder of the primary lease. Returns whether
+     * the client is eligible for the lease, but does not actually acquire it.
+     * May return 'false' even if there is no active leaseholder and another
+     * (foreground) client should become leaseholder instead.
+     */    wi(t) {
+        if (this.Xs) return At.resolve(!0);
+        return Bo(t).get("owner").next((e => {
+            // A client is eligible for the primary lease if:
+            // - its network is enabled and the client's tab is in the foreground.
+            // - its network is enabled and no other client's tab is in the
+            //   foreground.
+            // - every clients network is disabled and the client's tab is in the
+            //   foreground.
+            // - every clients network is disabled and no other client's tab is in
+            //   the foreground.
+            // - the `forceOwningTab` setting was passed in.
+            if (null !== e && this.Ti(e.leaseTimestampMs, 5e3) && !this.Ri(e.ownerId)) {
+                if (this.yi(e) && this.networkEnabled) return !0;
+                if (!this.yi(e)) {
+                    if (!e.allowTabSynchronization) 
+                    // Fail the `canActAsPrimary` check if the current leaseholder has
+                    // not opted into multi-tab synchronization. If this happens at
+                    // client startup, we reject the Promise returned by
+                    // `enablePersistence()` and the user can continue to use Firestore
+                    // with in-memory persistence.
+                    // If this fails during a lease refresh, we will instead block the
+                    // AsyncQueue from executing further operations. Note that this is
+                    // acceptable since mixing & matching different `synchronizeTabs`
+                    // settings is not supported.
+                    // TODO(b/114226234): Remove this check when `synchronizeTabs` can
+                    // no longer be turned off.
+                    throw new L$1(B.FAILED_PRECONDITION, Fo);
+                    return !1;
+                }
+            }
+            return !(!this.networkEnabled || !this.inForeground) || Lo(t).W().next((t => void 0 === this.Ei(t, 5e3).find((t => {
+                if (this.clientId !== t.clientId) {
+                    const e = !this.networkEnabled && t.networkEnabled, n = !this.inForeground && t.inForeground, s = this.networkEnabled === t.networkEnabled;
+                    if (e || n && s) return !0;
+                }
+                return !1;
+            }))));
+        })).next((t => (this.isPrimary !== t && C$1("IndexedDbPersistence", `Client ${t ? "is" : "is not"} eligible for a primary lease.`), 
+        t)));
+    }
+    async shutdown() {
+        // The shutdown() operations are idempotent and can be called even when
+        // start() aborted (e.g. because it couldn't acquire the persistence lease).
+        this.xs = !1, this.bi(), this.si && (this.si.cancel(), this.si = null), this.vi(), 
+        this.Pi(), 
+        // Use `SimpleDb.runTransaction` directly to avoid failing if another tab
+        // has obtained the primary lease.
+        await this.ui.runTransaction("shutdown", "readwrite", [ "owner", "clientMetadata" ], (t => {
+            const e = new zi(t, Ot.at);
+            return this.mi(e).next((() => this.pi(e)));
+        })), this.ui.close(), 
+        // Remove the entry marking the client as zombied from LocalStorage since
+        // we successfully deleted its metadata from IndexedDb.
+        this.Vi();
+    }
+    /**
+     * Returns clients that are not zombied and have an updateTime within the
+     * provided threshold.
+     */    Ei(t, e) {
+        return t.filter((t => this.Ti(t.updateTimeMs, e) && !this.Ri(t.clientId)));
+    }
+    /**
+     * Returns the IDs of the clients that are currently active. If multi-tab
+     * is not supported, returns an array that only contains the local client's
+     * ID.
+     *
+     * PORTING NOTE: This is only used for Web multi-tab.
+     */    Si() {
+        return this.runTransaction("getActiveClients", "readonly", (t => Lo(t).W().next((t => this.Ei(t, 18e5).map((t => t.clientId))))));
+    }
+    get started() {
+        return this.xs;
+    }
+    getMutationQueue(t, e) {
+        return Jr.ue(t, this.Tt, e, this.referenceDelegate);
+    }
+    getTargetCache() {
+        return this.Ns;
+    }
+    getRemoteDocumentCache() {
+        return this.remoteDocumentCache;
+    }
+    getIndexManager(t) {
+        return new Lr(t, this.Tt.oe.databaseId);
+    }
+    getDocumentOverlayCache(t) {
+        return wr.ue(this.Tt, t);
+    }
+    getBundleCache() {
+        return this.Os;
+    }
+    runTransaction(t, e, n) {
+        C$1("IndexedDbPersistence", "Starting transaction:", t);
+        const s = "readonly" === e ? "readonly" : "readwrite", i = 15 === (r = this.ti) ? ji : 14 === r ? Qi : 13 === r ? Gi : 12 === r ? Ki : 11 === r ? Ui : void O();
+        /** Returns the object stores for the provided schema. */
+        var r;
+        let o;
+        // Do all transactions as readwrite against all object stores, since we
+        // are the only reader/writer.
+                return this.ui.runTransaction(t, s, i, (s => (o = new zi(s, this.Cs ? this.Cs.next() : Ot.at), 
+        "readwrite-primary" === e ? this._i(o).next((t => !!t || this.wi(o))).next((e => {
+            if (!e) throw x$1(`Failed to obtain primary lease for action '${t}'.`), this.isPrimary = !1, 
+            this.Ys.enqueueRetryable((() => this.ri(!1))), new L$1(B.FAILED_PRECONDITION, It);
+            return n(o);
+        })).next((t => this.gi(o).next((() => t)))) : this.Di(o).next((() => n(o)))))).then((t => (o.raiseOnCommittedEvent(), 
+        t)));
+    }
+    /**
+     * Verifies that the current tab is the primary leaseholder or alternatively
+     * that the leaseholder has opted into multi-tab synchronization.
+     */
+    // TODO(b/114226234): Remove this check when `synchronizeTabs` can no longer
+    // be turned off.
+    Di(t) {
+        return Bo(t).get("owner").next((t => {
+            if (null !== t && this.Ti(t.leaseTimestampMs, 5e3) && !this.Ri(t.ownerId) && !this.yi(t) && !(this.Xs || this.allowTabSynchronization && t.allowTabSynchronization)) throw new L$1(B.FAILED_PRECONDITION, Fo);
+        }));
+    }
+    /**
+     * Obtains or extends the new primary lease for the local client. This
+     * method does not verify that the client is eligible for this lease.
+     */    gi(t) {
+        const e = {
+            ownerId: this.clientId,
+            allowTabSynchronization: this.allowTabSynchronization,
+            leaseTimestampMs: Date.now()
+        };
+        return Bo(t).put("owner", e);
+    }
+    static C() {
+        return bt.C();
+    }
+    /** Checks the primary lease and removes it if we are the current primary. */    mi(t) {
+        const e = Bo(t);
+        return e.get("owner").next((t => this.yi(t) ? (C$1("IndexedDbPersistence", "Releasing primary lease."), 
+        e.delete("owner")) : At.resolve()));
+    }
+    /** Verifies that `updateTimeMs` is within `maxAgeMs`. */    Ti(t, e) {
+        const n = Date.now();
+        return !(t < n - e) && (!(t > n) || (x$1(`Detected an update time that is in the future: ${t} > ${n}`), 
+        !1));
+    }
+    hi() {
+        null !== this.document && "function" == typeof this.document.addEventListener && (this.ni = () => {
+            this.Ys.enqueueAndForget((() => (this.inForeground = "visible" === this.document.visibilityState, 
+            this.ai())));
+        }, this.document.addEventListener("visibilitychange", this.ni), this.inForeground = "visible" === this.document.visibilityState);
+    }
+    vi() {
+        this.ni && (this.document.removeEventListener("visibilitychange", this.ni), this.ni = null);
+    }
+    /**
+     * Attaches a window.unload handler that will synchronously write our
+     * clientId to a "zombie client id" location in LocalStorage. This can be used
+     * by tabs trying to acquire the primary lease to determine that the lease
+     * is no longer valid even if the timestamp is recent. This is particularly
+     * important for the refresh case (so the tab correctly re-acquires the
+     * primary lease). LocalStorage is used for this rather than IndexedDb because
+     * it is a synchronous API and so can be used reliably from  an unload
+     * handler.
+     */    li() {
+        var t;
+        "function" == typeof (null === (t = this.window) || void 0 === t ? void 0 : t.addEventListener) && (this.ei = () => {
+            // Note: In theory, this should be scheduled on the AsyncQueue since it
+            // accesses internal state. We execute this code directly during shutdown
+            // to make sure it gets a chance to run.
+            this.bi(), isSafari() && navigator.appVersion.match(/Version\/1[45]/) && 
+            // On Safari 14 and 15, we do not run any cleanup actions as it might
+            // trigger a bug that prevents Safari from re-opening IndexedDB during
+            // the next page load.
+            // See https://bugs.webkit.org/show_bug.cgi?id=226547
+            this.Ys.enterRestrictedMode(/* purgeExistingTasks= */ !0), this.Ys.enqueueAndForget((() => this.shutdown()));
+        }, this.window.addEventListener("pagehide", this.ei));
+    }
+    Pi() {
+        this.ei && (this.window.removeEventListener("pagehide", this.ei), this.ei = null);
+    }
+    /**
+     * Returns whether a client is "zombied" based on its LocalStorage entry.
+     * Clients become zombied when their tab closes without running all of the
+     * cleanup logic in `shutdown()`.
+     */    Ri(t) {
+        var e;
+        try {
+            const n = null !== (null === (e = this.ci) || void 0 === e ? void 0 : e.getItem(this.Ai(t)));
+            return C$1("IndexedDbPersistence", `Client '${t}' ${n ? "is" : "is not"} zombied in LocalStorage`), 
+            n;
+        } catch (t) {
+            // Gracefully handle if LocalStorage isn't working.
+            return x$1("IndexedDbPersistence", "Failed to get zombied client id.", t), !1;
+        }
+    }
+    /**
+     * Record client as zombied (a client that had its tab closed). Zombied
+     * clients are ignored during primary tab selection.
+     */    bi() {
+        if (this.ci) try {
+            this.ci.setItem(this.Ai(this.clientId), String(Date.now()));
+        } catch (t) {
+            // Gracefully handle if LocalStorage isn't available / working.
+            x$1("Failed to set zombie client id.", t);
+        }
+    }
+    /** Removes the zombied client entry if it exists. */    Vi() {
+        if (this.ci) try {
+            this.ci.removeItem(this.Ai(this.clientId));
+        } catch (t) {
+            // Ignore
+        }
+    }
+    Ai(t) {
+        return `firestore_zombie_${this.persistenceKey}_${t}`;
+    }
+}
+
+/**
+ * Helper to get a typed SimpleDbStore for the primary client object store.
+ */ function Bo(t) {
+    return Wi(t, "owner");
+}
+
+/**
+ * Helper to get a typed SimpleDbStore for the client metadata object store.
+ */ function Lo(t) {
+    return Wi(t, "clientMetadata");
+}
+
+/**
+ * Generates a string used as a prefix when storing data in IndexedDB and
+ * LocalStorage.
+ */ function qo(t, e) {
+    // Use two different prefix formats:
+    //   * firestore / persistenceKey / projectID . databaseID / ...
+    //   * firestore / persistenceKey / projectID / ...
+    // projectIDs are DNS-compatible names and cannot contain dots
+    // so there's no danger of collisions.
+    let n = t.projectId;
+    return t.isDefaultDatabase || (n += "." + t.database), "firestore/" + e + "/" + n + "/";
+}
+
+/**
+ * @license
  * Copyright 2017 Google LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -16315,6 +26074,29 @@ async function Xo(t, e, n) {
     })))));
 }
 
+// PORTING NOTE: Multi-Tab only.
+function eu(t, e) {
+    const n = $$1(t), s = $$1(n.Ns), i = n.Ki.get(e);
+    return i ? Promise.resolve(i.target) : n.persistence.runTransaction("Get target data", "readonly", (t => s.ie(t, e).next((t => t ? t.target : null))));
+}
+
+/**
+ * Returns the set of documents that have been updated since the last call.
+ * If this is the first call, returns the set of changes since client
+ * initialization. Further invocations will return document that have changed
+ * since the prior call.
+ */
+// PORTING NOTE: Multi-Tab only.
+function nu(t, e) {
+    const n = $$1(t), s = n.Qi.get(e) || st.min();
+    // Get the current maximum read time for the collection. This should always
+    // exist, but to reduce the chance for regressions we default to
+    // SnapshotVersion.Min()
+    // TODO(indexing): Consider removing the default value.
+        return n.persistence.runTransaction("Get new document changes", "readonly", (t => n.ji.getAllFromCollectionGroup(t, e, mt(s, -1), 
+    /* limit= */ Number.MAX_SAFE_INTEGER))).then((t => (su(n, e, t), t)));
+}
+
 /** Sets the collection group's maximum read time from the given documents. */
 // PORTING NOTE: Multi-Tab only.
 function su(t, e, n) {
@@ -16322,6 +26104,194 @@ function su(t, e, n) {
     n.forEach(((t, e) => {
         e.readTime.compareTo(s) > 0 && (s = e.readTime);
     })), t.Qi.set(e, s);
+}
+
+/**
+ * Creates a new target using the given bundle name, which will be used to
+ * hold the keys of all documents from the bundle in query-document mappings.
+ * This ensures that the loaded documents do not get garbage collected
+ * right away.
+ */
+/**
+ * Applies the documents from a bundle to the "ground-state" (remote)
+ * documents.
+ *
+ * LocalDocuments are re-calculated if there are remaining mutations in the
+ * queue.
+ */
+async function iu(t, e, n, s) {
+    const i = $$1(t);
+    let r = vs(), o = gs();
+    for (const t of n) {
+        const n = e.Zi(t.metadata.name);
+        t.document && (r = r.add(n));
+        const s = e.Xi(t);
+        s.setReadTime(e.tr(t.metadata.readTime)), o = o.insert(n, s);
+    }
+    const u = i.ji.newChangeBuffer({
+        trackRemovals: !0
+    }), c = await Zo(i, function(t) {
+        // It is OK that the path used for the query is not valid, because this will
+        // not be read and queried.
+        return Tn(wn(rt.fromString(`__bundle__/docs/${t}`)));
+    }(s));
+    // Allocates a target to hold all document keys from the bundle, such that
+    // they will not get garbage collected right away.
+        return i.persistence.runTransaction("Apply bundle documents", "readwrite", (t => Jo(t, u, o).next((e => (u.apply(t), 
+    e))).next((e => i.Ns.removeMatchingKeysForTargetId(t, c.targetId).next((() => i.Ns.addMatchingKeys(t, r, c.targetId))).next((() => i.localDocuments.getLocalViewOfDocuments(t, e.Hi, e.Ji))).next((() => e.Hi))))));
+}
+
+/**
+ * Returns a promise of a boolean to indicate if the given bundle has already
+ * been loaded and the create time is newer than the current loading bundle.
+ */
+/**
+ * Saves the given `NamedQuery` to local persistence.
+ */
+async function ru(t, e, n = vs()) {
+    // Allocate a target for the named query such that it can be resumed
+    // from associated read time if users use it to listen.
+    // NOTE: this also means if no corresponding target exists, the new target
+    // will remain active and will not get collected, unless users happen to
+    // unlisten the query somehow.
+    const s = await Zo(t, Tn(cr(e.bundledQuery))), i = $$1(t);
+    return i.persistence.runTransaction("Save named query", "readwrite", (t => {
+        const r = Qs(e.readTime);
+        // Simply save the query itself if it is older than what the SDK already
+        // has.
+                if (s.snapshotVersion.compareTo(r) >= 0) return i.Os.saveNamedQuery(t, e);
+        // Update existing target data because the query from the bundle is newer.
+                const o = s.withResumeToken(Ht.EMPTY_BYTE_STRING, r);
+        return i.Ki = i.Ki.insert(o.targetId, o), i.Ns.updateTargetData(t, o).next((() => i.Ns.removeMatchingKeysForTargetId(t, s.targetId))).next((() => i.Ns.addMatchingKeys(t, n, s.targetId))).next((() => i.Os.saveNamedQuery(t, e)));
+    }));
+}
+
+/** Assembles the key for a client state in WebStorage */
+function ou(t, e) {
+    return `firestore_clients_${t}_${e}`;
+}
+
+// The format of the WebStorage key that stores the mutation state is:
+//     firestore_mutations_<persistence_prefix>_<batch_id>
+//     (for unauthenticated users)
+// or: firestore_mutations_<persistence_prefix>_<batch_id>_<user_uid>
+
+// 'user_uid' is last to avoid needing to escape '_' characters that it might
+// contain.
+/** Assembles the key for a mutation batch in WebStorage */
+function uu(t, e, n) {
+    let s = `firestore_mutations_${t}_${n}`;
+    return e.isAuthenticated() && (s += `_${e.uid}`), s;
+}
+
+// The format of the WebStorage key that stores a query target's metadata is:
+//     firestore_targets_<persistence_prefix>_<target_id>
+/** Assembles the key for a query state in WebStorage */
+function cu(t, e) {
+    return `firestore_targets_${t}_${e}`;
+}
+
+// The WebStorage prefix that stores the primary tab's online state. The
+// format of the key is:
+//     firestore_online_state_<persistence_prefix>
+/**
+ * Holds the state of a mutation batch, including its user ID, batch ID and
+ * whether the batch is 'pending', 'acknowledged' or 'rejected'.
+ */
+// Visible for testing
+class au {
+    constructor(t, e, n, s) {
+        this.user = t, this.batchId = e, this.state = n, this.error = s;
+    }
+    /**
+     * Parses a MutationMetadata from its JSON representation in WebStorage.
+     * Logs a warning and returns null if the format of the data is not valid.
+     */    static er(t, e, n) {
+        const s = JSON.parse(n);
+        let i, r = "object" == typeof s && -1 !== [ "pending", "acknowledged", "rejected" ].indexOf(s.state) && (void 0 === s.error || "object" == typeof s.error);
+        return r && s.error && (r = "string" == typeof s.error.message && "string" == typeof s.error.code, 
+        r && (i = new L$1(s.error.code, s.error.message))), r ? new au(t, e, s.state, i) : (x$1("SharedClientState", `Failed to parse mutation state for ID '${e}': ${n}`), 
+        null);
+    }
+    nr() {
+        const t = {
+            state: this.state,
+            updateTimeMs: Date.now()
+        };
+        return this.error && (t.error = {
+            code: this.error.code,
+            message: this.error.message
+        }), JSON.stringify(t);
+    }
+}
+
+/**
+ * Holds the state of a query target, including its target ID and whether the
+ * target is 'not-current', 'current' or 'rejected'.
+ */
+// Visible for testing
+class hu {
+    constructor(t, e, n) {
+        this.targetId = t, this.state = e, this.error = n;
+    }
+    /**
+     * Parses a QueryTargetMetadata from its JSON representation in WebStorage.
+     * Logs a warning and returns null if the format of the data is not valid.
+     */    static er(t, e) {
+        const n = JSON.parse(e);
+        let s, i = "object" == typeof n && -1 !== [ "not-current", "current", "rejected" ].indexOf(n.state) && (void 0 === n.error || "object" == typeof n.error);
+        return i && n.error && (i = "string" == typeof n.error.message && "string" == typeof n.error.code, 
+        i && (s = new L$1(n.error.code, n.error.message))), i ? new hu(t, n.state, s) : (x$1("SharedClientState", `Failed to parse target state for ID '${t}': ${e}`), 
+        null);
+    }
+    nr() {
+        const t = {
+            state: this.state,
+            updateTimeMs: Date.now()
+        };
+        return this.error && (t.error = {
+            code: this.error.code,
+            message: this.error.message
+        }), JSON.stringify(t);
+    }
+}
+
+/**
+ * This class represents the immutable ClientState for a client read from
+ * WebStorage, containing the list of active query targets.
+ */ class lu {
+    constructor(t, e) {
+        this.clientId = t, this.activeTargetIds = e;
+    }
+    /**
+     * Parses a RemoteClientState from the JSON representation in WebStorage.
+     * Logs a warning and returns null if the format of the data is not valid.
+     */    static er(t, e) {
+        const n = JSON.parse(e);
+        let s = "object" == typeof n && n.activeTargetIds instanceof Array, i = Vs();
+        for (let t = 0; s && t < n.activeTargetIds.length; ++t) s = jt(n.activeTargetIds[t]), 
+        i = i.add(n.activeTargetIds[t]);
+        return s ? new lu(t, i) : (x$1("SharedClientState", `Failed to parse client data for instance '${t}': ${e}`), 
+        null);
+    }
+}
+
+/**
+ * This class represents the online state for all clients participating in
+ * multi-tab. The online state is only written to by the primary client, and
+ * used in secondary clients to update their query views.
+ */ class fu {
+    constructor(t, e) {
+        this.clientId = t, this.onlineState = e;
+    }
+    /**
+     * Parses a SharedOnlineState from its JSON representation in WebStorage.
+     * Logs a warning and returns null if the format of the data is not valid.
+     */    static er(t) {
+        const e = JSON.parse(t);
+        return "object" == typeof e && -1 !== [ "Unknown", "Online", "Offline" ].indexOf(e.onlineState) && "string" == typeof e.clientId ? new fu(e.clientId, e.onlineState) : (x$1("SharedClientState", `Failed to parse online state: ${t}`), 
+        null);
+    }
 }
 
 /**
@@ -16354,6 +26324,329 @@ class du {
             updateTimeMs: Date.now()
         };
         return JSON.stringify(t);
+    }
+}
+
+/**
+ * `WebStorageSharedClientState` uses WebStorage (window.localStorage) as the
+ * backing store for the SharedClientState. It keeps track of all active
+ * clients and supports modifications of the local client's data.
+ */ class _u {
+    constructor(t, e, n, s, i) {
+        this.window = t, this.Ys = e, this.persistenceKey = n, this.rr = s, this.syncEngine = null, 
+        this.onlineStateHandler = null, this.sequenceNumberHandler = null, this.ur = this.cr.bind(this), 
+        this.ar = new We(X), this.started = !1, 
+        /**
+         * Captures WebStorage events that occur before `start()` is called. These
+         * events are replayed once `WebStorageSharedClientState` is started.
+         */
+        this.hr = [];
+        // Escape the special characters mentioned here:
+        // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions
+        const r = n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        this.storage = this.window.localStorage, this.currentUser = i, this.lr = ou(this.persistenceKey, this.rr), 
+        this.dr = 
+        /** Assembles the key for the current sequence number. */
+        function(t) {
+            return `firestore_sequence_number_${t}`;
+        }
+        /**
+ * @license
+ * Copyright 2018 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */ (this.persistenceKey), this.ar = this.ar.insert(this.rr, new du), this._r = new RegExp(`^firestore_clients_${r}_([^_]*)$`), 
+        this.wr = new RegExp(`^firestore_mutations_${r}_(\\d+)(?:_(.*))?$`), this.mr = new RegExp(`^firestore_targets_${r}_(\\d+)$`), 
+        this.gr = 
+        /** Assembles the key for the online state of the primary tab. */
+        function(t) {
+            return `firestore_online_state_${t}`;
+        }
+        // The WebStorage prefix that plays as a event to indicate the remote documents
+        // might have changed due to some secondary tabs loading a bundle.
+        // format of the key is:
+        //     firestore_bundle_loaded_v2_<persistenceKey>
+        // The version ending with "v2" stores the list of modified collection groups.
+        (this.persistenceKey), this.yr = function(t) {
+            return `firestore_bundle_loaded_v2_${t}`;
+        }
+        // The WebStorage key prefix for the key that stores the last sequence number allocated. The key
+        // looks like 'firestore_sequence_number_<persistence_prefix>'.
+        (this.persistenceKey), 
+        // Rather than adding the storage observer during start(), we add the
+        // storage observer during initialization. This ensures that we collect
+        // events before other components populate their initial state (during their
+        // respective start() calls). Otherwise, we might for example miss a
+        // mutation that is added after LocalStore's start() processed the existing
+        // mutations but before we observe WebStorage events.
+        this.window.addEventListener("storage", this.ur);
+    }
+    /** Returns 'true' if WebStorage is available in the current environment. */    static C(t) {
+        return !(!t || !t.localStorage);
+    }
+    async start() {
+        // Retrieve the list of existing clients to backfill the data in
+        // SharedClientState.
+        const t = await this.syncEngine.Si();
+        for (const e of t) {
+            if (e === this.rr) continue;
+            const t = this.getItem(ou(this.persistenceKey, e));
+            if (t) {
+                const n = lu.er(e, t);
+                n && (this.ar = this.ar.insert(n.clientId, n));
+            }
+        }
+        this.pr();
+        // Check if there is an existing online state and call the callback handler
+        // if applicable.
+        const e = this.storage.getItem(this.gr);
+        if (e) {
+            const t = this.Ir(e);
+            t && this.Tr(t);
+        }
+        for (const t of this.hr) this.cr(t);
+        this.hr = [], 
+        // Register a window unload hook to remove the client metadata entry from
+        // WebStorage even if `shutdown()` was not called.
+        this.window.addEventListener("pagehide", (() => this.shutdown())), this.started = !0;
+    }
+    writeSequenceNumber(t) {
+        this.setItem(this.dr, JSON.stringify(t));
+    }
+    getAllActiveQueryTargets() {
+        return this.Er(this.ar);
+    }
+    isActiveQueryTarget(t) {
+        let e = !1;
+        return this.ar.forEach(((n, s) => {
+            s.activeTargetIds.has(t) && (e = !0);
+        })), e;
+    }
+    addPendingMutation(t) {
+        this.Ar(t, "pending");
+    }
+    updateMutationState(t, e, n) {
+        this.Ar(t, e, n), 
+        // Once a final mutation result is observed by other clients, they no longer
+        // access the mutation's metadata entry. Since WebStorage replays events
+        // in order, it is safe to delete the entry right after updating it.
+        this.Rr(t);
+    }
+    addLocalQueryTarget(t) {
+        let e = "not-current";
+        // Lookup an existing query state if the target ID was already registered
+        // by another tab
+                if (this.isActiveQueryTarget(t)) {
+            const n = this.storage.getItem(cu(this.persistenceKey, t));
+            if (n) {
+                const s = hu.er(t, n);
+                s && (e = s.state);
+            }
+        }
+        return this.br.sr(t), this.pr(), e;
+    }
+    removeLocalQueryTarget(t) {
+        this.br.ir(t), this.pr();
+    }
+    isLocalQueryTarget(t) {
+        return this.br.activeTargetIds.has(t);
+    }
+    clearQueryState(t) {
+        this.removeItem(cu(this.persistenceKey, t));
+    }
+    updateQueryState(t, e, n) {
+        this.vr(t, e, n);
+    }
+    handleUserChange(t, e, n) {
+        e.forEach((t => {
+            this.Rr(t);
+        })), this.currentUser = t, n.forEach((t => {
+            this.addPendingMutation(t);
+        }));
+    }
+    setOnlineState(t) {
+        this.Pr(t);
+    }
+    notifyBundleLoaded(t) {
+        this.Vr(t);
+    }
+    shutdown() {
+        this.started && (this.window.removeEventListener("storage", this.ur), this.removeItem(this.lr), 
+        this.started = !1);
+    }
+    getItem(t) {
+        const e = this.storage.getItem(t);
+        return C$1("SharedClientState", "READ", t, e), e;
+    }
+    setItem(t, e) {
+        C$1("SharedClientState", "SET", t, e), this.storage.setItem(t, e);
+    }
+    removeItem(t) {
+        C$1("SharedClientState", "REMOVE", t), this.storage.removeItem(t);
+    }
+    cr(t) {
+        // Note: The function is typed to take Event to be interface-compatible with
+        // `Window.addEventListener`.
+        const e = t;
+        if (e.storageArea === this.storage) {
+            if (C$1("SharedClientState", "EVENT", e.key, e.newValue), e.key === this.lr) return void x$1("Received WebStorage notification for local change. Another client might have garbage-collected our state");
+            this.Ys.enqueueRetryable((async () => {
+                if (this.started) {
+                    if (null !== e.key) if (this._r.test(e.key)) {
+                        if (null == e.newValue) {
+                            const t = this.Sr(e.key);
+                            return this.Dr(t, null);
+                        }
+                        {
+                            const t = this.Cr(e.key, e.newValue);
+                            if (t) return this.Dr(t.clientId, t);
+                        }
+                    } else if (this.wr.test(e.key)) {
+                        if (null !== e.newValue) {
+                            const t = this.Nr(e.key, e.newValue);
+                            if (t) return this.kr(t);
+                        }
+                    } else if (this.mr.test(e.key)) {
+                        if (null !== e.newValue) {
+                            const t = this.Or(e.key, e.newValue);
+                            if (t) return this.Mr(t);
+                        }
+                    } else if (e.key === this.gr) {
+                        if (null !== e.newValue) {
+                            const t = this.Ir(e.newValue);
+                            if (t) return this.Tr(t);
+                        }
+                    } else if (e.key === this.dr) {
+                        const t = function(t) {
+                            let e = Ot.at;
+                            if (null != t) try {
+                                const n = JSON.parse(t);
+                                M$1("number" == typeof n), e = n;
+                            } catch (t) {
+                                x$1("SharedClientState", "Failed to read sequence number from WebStorage", t);
+                            }
+                            return e;
+                        }
+                        /**
+ * `MemorySharedClientState` is a simple implementation of SharedClientState for
+ * clients using memory persistence. The state in this class remains fully
+ * isolated and no synchronization is performed.
+ */ (e.newValue);
+                        t !== Ot.at && this.sequenceNumberHandler(t);
+                    } else if (e.key === this.yr) {
+                        const t = this.Fr(e.newValue);
+                        await Promise.all(t.map((t => this.syncEngine.$r(t))));
+                    }
+                } else this.hr.push(e);
+            }));
+        }
+    }
+    get br() {
+        return this.ar.get(this.rr);
+    }
+    pr() {
+        this.setItem(this.lr, this.br.nr());
+    }
+    Ar(t, e, n) {
+        const s = new au(this.currentUser, t, e, n), i = uu(this.persistenceKey, this.currentUser, t);
+        this.setItem(i, s.nr());
+    }
+    Rr(t) {
+        const e = uu(this.persistenceKey, this.currentUser, t);
+        this.removeItem(e);
+    }
+    Pr(t) {
+        const e = {
+            clientId: this.rr,
+            onlineState: t
+        };
+        this.storage.setItem(this.gr, JSON.stringify(e));
+    }
+    vr(t, e, n) {
+        const s = cu(this.persistenceKey, t), i = new hu(t, e, n);
+        this.setItem(s, i.nr());
+    }
+    Vr(t) {
+        const e = JSON.stringify(Array.from(t));
+        this.setItem(this.yr, e);
+    }
+    /**
+     * Parses a client state key in WebStorage. Returns null if the key does not
+     * match the expected key format.
+     */    Sr(t) {
+        const e = this._r.exec(t);
+        return e ? e[1] : null;
+    }
+    /**
+     * Parses a client state in WebStorage. Returns 'null' if the value could not
+     * be parsed.
+     */    Cr(t, e) {
+        const n = this.Sr(t);
+        return lu.er(n, e);
+    }
+    /**
+     * Parses a mutation batch state in WebStorage. Returns 'null' if the value
+     * could not be parsed.
+     */    Nr(t, e) {
+        const n = this.wr.exec(t), s = Number(n[1]), i = void 0 !== n[2] ? n[2] : null;
+        return au.er(new v$1(i), s, e);
+    }
+    /**
+     * Parses a query target state from WebStorage. Returns 'null' if the value
+     * could not be parsed.
+     */    Or(t, e) {
+        const n = this.mr.exec(t), s = Number(n[1]);
+        return hu.er(s, e);
+    }
+    /**
+     * Parses an online state from WebStorage. Returns 'null' if the value
+     * could not be parsed.
+     */    Ir(t) {
+        return fu.er(t);
+    }
+    Fr(t) {
+        return JSON.parse(t);
+    }
+    async kr(t) {
+        if (t.user.uid === this.currentUser.uid) return this.syncEngine.Br(t.batchId, t.state, t.error);
+        C$1("SharedClientState", `Ignoring mutation for non-active user ${t.user.uid}`);
+    }
+    Mr(t) {
+        return this.syncEngine.Lr(t.targetId, t.state, t.error);
+    }
+    Dr(t, e) {
+        const n = e ? this.ar.insert(t, e) : this.ar.remove(t), s = this.Er(this.ar), i = this.Er(n), r = [], o = [];
+        return i.forEach((t => {
+            s.has(t) || r.push(t);
+        })), s.forEach((t => {
+            i.has(t) || o.push(t);
+        })), this.syncEngine.qr(r, o).then((() => {
+            this.ar = n;
+        }));
+    }
+    Tr(t) {
+        // We check whether the client that wrote this online state is still active
+        // by comparing its client ID to the list of clients kept active in
+        // IndexedDb. If a client does not update their IndexedDb client state
+        // within 5 seconds, it is considered inactive and we don't emit an online
+        // state event.
+        this.ar.get(t.clientId) && this.onlineStateHandler(t.onlineState);
+    }
+    Er(t) {
+        let e = Vs();
+        return t.forEach(((t, n) => {
+            e = e.unionWith(n.activeTargetIds);
+        })), e;
     }
 }
 
@@ -16635,7 +26928,7 @@ class {
                         break;
 
                       case ErrorCode.TIMEOUT:
-                        C$1("Connection", 'RPC "' + t + '" timed out'), r(new L(B.DEADLINE_EXCEEDED, "Request time out"));
+                        C$1("Connection", 'RPC "' + t + '" timed out'), r(new L$1(B.DEADLINE_EXCEEDED, "Request time out"));
                         break;
 
                       case ErrorCode.HTTP_ERROR:
@@ -16650,12 +26943,12 @@ class {
                                     const e = t.toLowerCase().replace(/_/g, "-");
                                     return Object.values(B).indexOf(e) >= 0 ? e : B.UNKNOWN;
                                 }(e.status);
-                                r(new L(t, e.message));
-                            } else r(new L(B.UNKNOWN, "Server responded with status " + o.getStatus()));
+                                r(new L$1(t, e.message));
+                            } else r(new L$1(B.UNKNOWN, "Server responded with status " + o.getStatus()));
                         } else 
                         // If we received an HTTP_ERROR but there's no status code,
                         // it's most probably a connection issue
-                        r(new L(B.UNAVAILABLE, "Connection failed."));
+                        r(new L$1(B.UNAVAILABLE, "Connection failed."));
                         break;
 
                       default:
@@ -16745,7 +27038,7 @@ class {
         })), f(c, WebChannel.EventType.CLOSE, (() => {
             h || (h = !0, C$1("Connection", "WebChannel transport closed"), l.oo());
         })), f(c, WebChannel.EventType.ERROR, (t => {
-            h || (h = !0, N$1("Connection", "WebChannel transport errored:", t), l.oo(new L(B.UNAVAILABLE, "The operation could not be completed")));
+            h || (h = !0, N$1("Connection", "WebChannel transport errored:", t), l.oo(new L$1(B.UNAVAILABLE, "The operation could not be completed")));
         })), f(c, WebChannel.EventType.MESSAGE, (t => {
             var e;
             if (!h) {
@@ -16776,7 +27069,7 @@ class {
                     }(t), n = i.message;
                     void 0 === e && (e = B.INTERNAL, n = "Unknown error status: " + t + " with message " + i.message), 
                     // Mark closed so no further events are propagated
-                    h = !0, l.oo(new L(e, n)), c.close();
+                    h = !0, l.oo(new L$1(e, n)), c.close();
                 } else C$1("Connection", "WebChannel received:", n), l.uo(n);
             }
         })), f(r, Event.STAT_EVENT, (t => {
@@ -16789,6 +27082,46 @@ class {
             l.ro();
         }), 0), l;
     }
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/** Initializes the WebChannelConnection for the browser. */
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/** The Platform's 'window' implementation or null if not available. */
+function Tu() {
+    // `window` is not always available, e.g. in ReactNative and WebWorkers.
+    // eslint-disable-next-line no-restricted-globals
+    return "undefined" != typeof window ? window : null;
 }
 
 /** The Platform's 'document' implementation or null if not available. */ function Eu() {
@@ -17103,7 +27436,7 @@ class bu {
             this.jo(t, n);
         }), (e => {
             t((() => {
-                const t = new L(B.UNKNOWN, "Fetching auth token failed: " + e.message);
+                const t = new L$1(B.UNKNOWN, "Fetching auth token failed: " + e.message);
                 return this.zo(t);
             }));
         }));
@@ -17305,23 +27638,62 @@ class Vu extends class {} {
         this.Tt = s, this.iu = !1;
     }
     ru() {
-        if (this.iu) throw new L(B.FAILED_PRECONDITION, "The client has already been terminated.");
+        if (this.iu) throw new L$1(B.FAILED_PRECONDITION, "The client has already been terminated.");
     }
     /** Invokes the provided RPC with auth and AppCheck tokens. */    lo(t, e, n) {
         return this.ru(), Promise.all([ this.authCredentials.getToken(), this.appCheckCredentials.getToken() ]).then((([s, i]) => this.connection.lo(t, e, n, s, i))).catch((t => {
             throw "FirebaseError" === t.name ? (t.code === B.UNAUTHENTICATED && (this.authCredentials.invalidateToken(), 
-            this.appCheckCredentials.invalidateToken()), t) : new L(B.UNKNOWN, t.toString());
+            this.appCheckCredentials.invalidateToken()), t) : new L$1(B.UNKNOWN, t.toString());
         }));
     }
     /** Invokes the provided RPC with streamed results with auth and AppCheck tokens. */    mo(t, e, n, s) {
         return this.ru(), Promise.all([ this.authCredentials.getToken(), this.appCheckCredentials.getToken() ]).then((([i, r]) => this.connection.mo(t, e, n, i, r, s))).catch((t => {
             throw "FirebaseError" === t.name ? (t.code === B.UNAUTHENTICATED && (this.authCredentials.invalidateToken(), 
-            this.appCheckCredentials.invalidateToken()), t) : new L(B.UNKNOWN, t.toString());
+            this.appCheckCredentials.invalidateToken()), t) : new L$1(B.UNKNOWN, t.toString());
         }));
     }
     terminate() {
         this.iu = !0;
     }
+}
+
+// TODO(firestorexp): Make sure there is only one Datastore instance per
+// firestore-exp client.
+async function Su(t, e, n) {
+    const s = $$1(t), i = function(t, e, n) {
+        const s = ci(t, e), i = [];
+        return n.forEach((t => {
+            "count" === t.lt ? i.push({
+                alias: t.alias.canonicalString(),
+                count: {}
+            }) : "avg" === t.lt ? i.push({
+                alias: t.alias.canonicalString(),
+                avg: {
+                    field: wi(t.fieldPath)
+                }
+            }) : "sum" === t.lt && i.push({
+                alias: t.alias.canonicalString(),
+                sum: {
+                    field: wi(t.fieldPath)
+                }
+            });
+        })), {
+            structuredAggregationQuery: {
+                aggregations: i,
+                structuredQuery: s.structuredQuery
+            },
+            parent: s.parent
+        };
+    }(s.Tt, Tn(e), n), r = i.parent;
+    s.connection.ho || delete i.parent;
+    const o = (await s.mo("RunAggregationQuery", r, i, /*expectedResponseCount=*/ 1)).filter((t => !!t.result));
+    // Omit RunAggregationQueryResponse that only contain readTimes.
+        return M$1(1 === o.length), (u = o[0]).result, u.result.aggregateFields, new en({
+        mapValue: {
+            fields: null === (c = u.result) || void 0 === c ? void 0 : c.aggregateFields
+        }
+    });
+    var u, c;
 }
 
 /**
@@ -17922,7 +28294,7 @@ class oc {
      * As long as the operation has not yet been run, calling cancel() provides a
      * guarantee that the operation will not be run.
      */    cancel(t) {
-        null !== this.timerHandle && (this.clearTimeout(), this.deferred.reject(new L(B.CANCELLED, "Operation cancelled" + (t ? ": " + t : ""))));
+        null !== this.timerHandle && (this.clearTimeout(), this.deferred.reject(new L$1(B.CANCELLED, "Operation cancelled" + (t ? ": " + t : ""))));
     }
     handleDelayElapsed() {
         this.asyncQueue.enqueueAndForget((() => null !== this.timerHandle ? (this.clearTimeout(), 
@@ -17938,7 +28310,7 @@ class oc {
  * Returns a FirestoreError that can be surfaced to the user if the provided
  * error is an IndexedDbTransactionError. Re-throws the error otherwise.
  */ function uc(t, e) {
-    if (x$1("AsyncQueue", `${e}: ${t}`), Vt(t)) return new L(B.UNAVAILABLE, `${e}: ${t}`);
+    if (x$1("AsyncQueue", `${e}: ${t}`), Vt(t)) return new L$1(B.UNAVAILABLE, `${e}: ${t}`);
     throw t;
 }
 
@@ -18281,6 +28653,140 @@ function gc(t) {
         t = hc.fromInitialDocuments(t.query, t.docs, t.mutatedKeys, t.fromCache, t.hasCachedResults), 
         this.Du = !0, this.Su.next(t);
     }
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * A complete element in the bundle stream, together with the byte length it
+ * occupies in the stream.
+ */ class pc {
+    constructor(t, 
+    // How many bytes this element takes to store in the bundle.
+    e) {
+        this.Mu = t, this.byteLength = e;
+    }
+    Fu() {
+        return "metadata" in this.Mu;
+    }
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Helper to convert objects from bundles to model objects in the SDK.
+ */ class Ic {
+    constructor(t) {
+        this.Tt = t;
+    }
+    Zi(t) {
+        return Hs(this.Tt, t);
+    }
+    /**
+     * Converts a BundleDocument to a MutableDocument.
+     */    Xi(t) {
+        return t.metadata.exists ? ei(this.Tt, t.document, !1) : sn.newNoDocument(this.Zi(t.metadata.name), this.tr(t.metadata.readTime));
+    }
+    tr(t) {
+        return Qs(t);
+    }
+}
+
+/**
+ * A class to process the elements from a bundle, load them into local
+ * storage and provide progress update while loading.
+ */ class Tc {
+    constructor(t, e, n) {
+        this.$u = t, this.localStore = e, this.Tt = n, 
+        /** Batched queries to be saved into storage */
+        this.queries = [], 
+        /** Batched documents to be saved into storage */
+        this.documents = [], 
+        /** The collection groups affected by this bundle. */
+        this.collectionGroups = new Set, this.progress = Ec(t);
+    }
+    /**
+     * Adds an element from the bundle to the loader.
+     *
+     * Returns a new progress if adding the element leads to a new progress,
+     * otherwise returns null.
+     */    Bu(t) {
+        this.progress.bytesLoaded += t.byteLength;
+        let e = this.progress.documentsLoaded;
+        if (t.Mu.namedQuery) this.queries.push(t.Mu.namedQuery); else if (t.Mu.documentMetadata) {
+            this.documents.push({
+                metadata: t.Mu.documentMetadata
+            }), t.Mu.documentMetadata.exists || ++e;
+            const n = rt.fromString(t.Mu.documentMetadata.name);
+            this.collectionGroups.add(n.get(n.length - 2));
+        } else t.Mu.document && (this.documents[this.documents.length - 1].document = t.Mu.document, 
+        ++e);
+        return e !== this.progress.documentsLoaded ? (this.progress.documentsLoaded = e, 
+        Object.assign({}, this.progress)) : null;
+    }
+    Lu(t) {
+        const e = new Map, n = new Ic(this.Tt);
+        for (const s of t) if (s.metadata.queries) {
+            const t = n.Zi(s.metadata.name);
+            for (const n of s.metadata.queries) {
+                const s = (e.get(n) || vs()).add(t);
+                e.set(n, s);
+            }
+        }
+        return e;
+    }
+    /**
+     * Update the progress to 'Success' and return the updated progress.
+     */    async complete() {
+        const t = await iu(this.localStore, new Ic(this.Tt), this.documents, this.$u.id), e = this.Lu(this.documents);
+        for (const t of this.queries) await ru(this.localStore, t, e.get(t.name));
+        return this.progress.taskState = "Success", {
+            progress: this.progress,
+            qu: this.collectionGroups,
+            Uu: t
+        };
+    }
+}
+
+/**
+ * Returns a `LoadBundleTaskProgress` representing the initial progress of
+ * loading a bundle.
+ */ function Ec(t) {
+    return {
+        taskState: "Running",
+        documentsLoaded: 0,
+        bytesLoaded: 0,
+        totalDocuments: t.totalDocuments,
+        totalBytes: t.totalBytes
+    };
 }
 
 /**
@@ -18940,6 +29446,28 @@ async function Fc(t, e, n) {
 }
 
 /**
+ * Registers a user callback that resolves when all pending mutations at the moment of calling
+ * are acknowledged .
+ */ async function $c(t, e) {
+    const n = $$1(t);
+    Lu(n.remoteStore) || C$1("SyncEngine", "The network is disabled. The task returned by 'awaitPendingWrites()' will not complete until the network is enabled.");
+    try {
+        const t = await function(t) {
+            const e = $$1(t);
+            return e.persistence.runTransaction("Get highest unacknowledged batch id", "readonly", (t => e.mutationQueue.getHighestUnacknowledgedBatchId(t)));
+        }(n.localStore);
+        if (-1 === t) 
+        // Trigger the callback right away if there is no pending writes at the moment.
+        return void e.resolve();
+        const s = n.dc.get(t) || [];
+        s.push(e), n.dc.set(t, s);
+    } catch (t) {
+        const n = uc(t, "Initialization of waitForPendingWrites() operation failed");
+        e.reject(n);
+    }
+}
+
+/**
  * Triggers the callbacks that are waiting for this batch id to get acknowledged by server,
  * if there are any.
  */ function Bc(t, e) {
@@ -19058,7 +29586,7 @@ async function zc(t, e) {
         function(t, e) {
             t.dc.forEach((t => {
                 t.forEach((t => {
-                    t.reject(new L(B.CANCELLED, e));
+                    t.reject(new L$1(B.CANCELLED, e));
                 }));
             })), t.dc.clear();
         }(n, "'waitForPendingWrites' promise is rejected due to a user change."), 
@@ -19082,6 +29610,202 @@ function Wc(t, e) {
     }
 }
 
+/**
+ * Reconcile the list of synced documents in an existing view with those
+ * from persistence.
+ */ async function Hc(t, e) {
+    const n = $$1(t), s = await tu(n.localStore, e.query, 
+    /* usePreviousResults= */ !0), i = e.view.nc(s);
+    return n.isPrimaryClient && Kc(n, e.targetId, i.tc), i;
+}
+
+/**
+ * Retrieves newly changed documents from remote document cache and raises
+ * snapshots if needed.
+ */
+// PORTING NOTE: Multi-Tab only.
+async function Jc(t, e) {
+    const n = $$1(t);
+    return nu(n.localStore, e).then((t => jc(n, t)));
+}
+
+/** Applies a mutation state to an existing batch.  */
+// PORTING NOTE: Multi-Tab only.
+async function Yc(t, e, n, s) {
+    const i = $$1(t), r = await function(t, e) {
+        const n = $$1(t), s = $$1(n.mutationQueue);
+        return n.persistence.runTransaction("Lookup mutation documents", "readonly", (t => s.An(t, e).next((e => e ? n.localDocuments.getDocuments(t, e) : At.resolve(null)))));
+    }
+    // PORTING NOTE: Multi-Tab only.
+    (i.localStore, e);
+    null !== r ? ("pending" === n ? 
+    // If we are the primary client, we need to send this write to the
+    // backend. Secondary clients will ignore these writes since their remote
+    // connection is disabled.
+    await zu(i.remoteStore) : "acknowledged" === n || "rejected" === n ? (
+    // NOTE: Both these methods are no-ops for batches that originated from
+    // other clients.
+    Lc(i, e, s || null), Bc(i, e), function(t, e) {
+        $$1($$1(t).mutationQueue).bn(e);
+    }
+    // PORTING NOTE: Multi-Tab only.
+    (i.localStore, e)) : O(), await jc(i, r)) : 
+    // A throttled tab may not have seen the mutation before it was completed
+    // and removed from the mutation queue, in which case we won't have cached
+    // the affected documents. In this case we can safely ignore the update
+    // since that means we didn't apply the mutation locally at all (if we
+    // had, we would have cached the affected documents), and so we will just
+    // see any resulting document changes via normal remote document updates
+    // as applicable.
+    C$1("SyncEngine", "Cannot apply mutation batch with id: " + e);
+}
+
+/** Applies a query target change from a different tab. */
+// PORTING NOTE: Multi-Tab only.
+async function Zc(t, e) {
+    const n = $$1(t);
+    if (ia(n), ra(n), !0 === e && !0 !== n.wc) {
+        // Secondary tabs only maintain Views for their local listeners and the
+        // Views internal state may not be 100% populated (in particular
+        // secondary tabs don't track syncedDocuments, the set of documents the
+        // server considers to be in the target). So when a secondary becomes
+        // primary, we need to need to make sure that all views for all targets
+        // match the state on disk.
+        const t = n.sharedClientState.getAllActiveQueryTargets(), e = await Xc(n, t.toArray());
+        n.wc = !0, await sc(n.remoteStore, !0);
+        for (const t of e) ku(n.remoteStore, t);
+    } else if (!1 === e && !1 !== n.wc) {
+        const t = [];
+        let e = Promise.resolve();
+        n.uc.forEach(((s, i) => {
+            n.sharedClientState.isLocalQueryTarget(i) ? t.push(i) : e = e.then((() => (qc(n, i), 
+            Xo(n.localStore, i, 
+            /*keepPersistedTargetData=*/ !0)))), Ou(n.remoteStore, i);
+        })), await e, await Xc(n, t), 
+        // PORTING NOTE: Multi-Tab only.
+        function(t) {
+            const e = $$1(t);
+            e.hc.forEach(((t, n) => {
+                Ou(e.remoteStore, n);
+            })), e.lc._s(), e.hc = new Map, e.ac = new We(ct.comparator);
+        }
+        /**
+ * Reconcile the query views of the provided query targets with the state from
+ * persistence. Raises snapshots for any changes that affect the local
+ * client and returns the updated state of all target's query data.
+ *
+ * @param syncEngine - The sync engine implementation
+ * @param targets - the list of targets with views that need to be recomputed
+ * @param transitionToPrimary - `true` iff the tab transitions from a secondary
+ * tab to a primary tab
+ */
+        // PORTING NOTE: Multi-Tab only.
+        (n), n.wc = !1, await sc(n.remoteStore, !1);
+    }
+}
+
+async function Xc(t, e, n) {
+    const s = $$1(t), i = [], r = [];
+    for (const t of e) {
+        let e;
+        const n = s.uc.get(t);
+        if (n && 0 !== n.length) {
+            // For queries that have a local View, we fetch their current state
+            // from LocalStore (as the resume token and the snapshot version
+            // might have changed) and reconcile their views with the persisted
+            // state (the list of syncedDocuments may have gotten out of sync).
+            e = await Zo(s.localStore, Tn(n[0]));
+            for (const t of n) {
+                const e = s.oc.get(t), n = await Hc(s, e);
+                n.snapshot && r.push(n.snapshot);
+            }
+        } else {
+            // For queries that never executed on this client, we need to
+            // allocate the target in LocalStore and initialize a new View.
+            const n = await eu(s.localStore, t);
+            e = await Zo(s.localStore, n), await Dc(s, ta(n), t, 
+            /*current=*/ !1, e.resumeToken);
+        }
+        i.push(e);
+    }
+    return s.rc.Ho(r), i;
+}
+
+/**
+ * Creates a `Query` object from the specified `Target`. There is no way to
+ * obtain the original `Query`, so we synthesize a `Query` from the `Target`
+ * object.
+ *
+ * The synthesized result might be different from the original `Query`, but
+ * since the synthesized `Query` should return the same results as the
+ * original one (only the presentation of results might differ), the potential
+ * difference will not cause issues.
+ */
+// PORTING NOTE: Multi-Tab only.
+function ta(t) {
+    return _n(t.path, t.collectionGroup, t.orderBy, t.filters, t.limit, "F" /* LimitType.First */ , t.startAt, t.endAt);
+}
+
+/** Returns the IDs of the clients that are currently active. */
+// PORTING NOTE: Multi-Tab only.
+function ea(t) {
+    const e = $$1(t);
+    return $$1($$1(e.localStore).persistence).Si();
+}
+
+/** Applies a query target change from a different tab. */
+// PORTING NOTE: Multi-Tab only.
+async function na(t, e, n, s) {
+    const i = $$1(t);
+    if (i.wc) 
+    // If we receive a target state notification via WebStorage, we are
+    // either already secondary or another tab has taken the primary lease.
+    return void C$1("SyncEngine", "Ignoring unexpected query state notification.");
+    const r = i.uc.get(e);
+    if (r && r.length > 0) switch (n) {
+      case "current":
+      case "not-current":
+        {
+            const t = await nu(i.localStore, Vn(r[0])), s = Ss.createSynthesizedRemoteEventForCurrentChange(e, "current" === n, Ht.EMPTY_BYTE_STRING);
+            await jc(i, t, s);
+            break;
+        }
+
+      case "rejected":
+        await Xo(i.localStore, e, 
+        /* keepPersistedTargetData */ !0), qc(i, e, s);
+        break;
+
+      default:
+        O();
+    }
+}
+
+/** Adds or removes Watch targets for queries from different tabs. */ async function sa(t, e, n) {
+    const s = ia(t);
+    if (s.wc) {
+        for (const t of e) {
+            if (s.uc.has(t)) {
+                // A target might have been added in a previous attempt
+                C$1("SyncEngine", "Adding an already active target " + t);
+                continue;
+            }
+            const e = await eu(s.localStore, t), n = await Zo(s.localStore, e);
+            await Dc(s, ta(e), n.targetId, 
+            /*current=*/ !1, n.resumeToken), ku(s.remoteStore, n);
+        }
+        for (const t of n) 
+        // Check that the target is still active since the target might have been
+        // removed if it has been rejected by the backend.
+        s.uc.has(t) && 
+        // Release queries that are still active.
+        await Xo(s.localStore, t, 
+        /* keepPersistedTargetData */ !1).then((() => {
+            Ou(s.remoteStore, t), qc(s, t);
+        })).catch(Et);
+    }
+}
+
 function ia(t) {
     const e = $$1(t);
     return e.remoteStore.remoteSyncer.applyRemoteEvent = Nc.bind(null, e), e.remoteStore.remoteSyncer.getRemoteKeysForTarget = Wc.bind(null, e), 
@@ -19093,6 +29817,83 @@ function ra(t) {
     const e = $$1(t);
     return e.remoteStore.remoteSyncer.applySuccessfulWrite = Mc.bind(null, e), e.remoteStore.remoteSyncer.rejectFailedWrite = Fc.bind(null, e), 
     e;
+}
+
+/**
+ * Loads a Firestore bundle into the SDK. The returned promise resolves when
+ * the bundle finished loading.
+ *
+ * @param syncEngine - SyncEngine to use.
+ * @param bundleReader - Bundle to load into the SDK.
+ * @param task - LoadBundleTask used to update the loading progress to public API.
+ */ function oa(t, e, n) {
+    const s = $$1(t);
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        (
+    /** Loads a bundle and returns the list of affected collection groups. */
+    async function(t, e, n) {
+        try {
+            const s = await e.getMetadata();
+            if (await function(t, e) {
+                const n = $$1(t), s = Qs(e.createTime);
+                return n.persistence.runTransaction("hasNewerBundle", "readonly", (t => n.Os.getBundleMetadata(t, e.id))).then((t => !!t && t.createTime.compareTo(s) >= 0));
+            }
+            /**
+ * Saves the given `BundleMetadata` to local persistence.
+ */ (t.localStore, s)) return await e.close(), n._completeWith(function(t) {
+                return {
+                    taskState: "Success",
+                    documentsLoaded: t.totalDocuments,
+                    bytesLoaded: t.totalBytes,
+                    totalDocuments: t.totalDocuments,
+                    totalBytes: t.totalBytes
+                };
+            }(s)), Promise.resolve(new Set);
+            n._updateProgress(Ec(s));
+            const i = new Tc(s, t.localStore, e.Tt);
+            let r = await e.yc();
+            for (;r; ) {
+                const t = await i.Bu(r);
+                t && n._updateProgress(t), r = await e.yc();
+            }
+            const o = await i.complete();
+            return await jc(t, o.Uu, 
+            /* remoteEvent */ void 0), 
+            // Save metadata, so loading the same bundle will skip.
+            await function(t, e) {
+                const n = $$1(t);
+                return n.persistence.runTransaction("Save bundle", "readwrite", (t => n.Os.saveBundleMetadata(t, e)));
+            }
+            /**
+ * Returns a promise of a `NamedQuery` associated with given query name. Promise
+ * resolves to undefined if no persisted data can be found.
+ */ (t.localStore, s), n._completeWith(o.progress), Promise.resolve(o.qu);
+        } catch (t) {
+            return N$1("SyncEngine", `Loading bundle failed with ${t}`), n._failWith(t), Promise.resolve(new Set);
+        }
+    }
+    /**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+    /**
+ * Provides all components needed for Firestore with in-memory persistence.
+ * Uses EagerGC garbage collection.
+ */)(s, e, n).then((t => {
+        s.sharedClientState.notifyBundleLoaded(t);
+    }));
 }
 
 class ua {
@@ -19122,6 +29923,78 @@ class ua {
     async terminate() {
         this.gcScheduler && this.gcScheduler.stop(), await this.sharedClientState.shutdown(), 
         await this.persistence.shutdown();
+    }
+}
+
+/**
+ * Provides all components needed for Firestore with IndexedDB persistence.
+ */ class ca extends ua {
+    constructor(t, e, n) {
+        super(), this.bc = t, this.cacheSizeBytes = e, this.forceOwnership = n, this.synchronizeTabs = !1;
+    }
+    async initialize(t) {
+        await super.initialize(t), await this.bc.initialize(this, t), 
+        // Enqueue writes from a previous session
+        await ra(this.bc.syncEngine), await zu(this.bc.remoteStore), 
+        // NOTE: This will immediately call the listener, so we make sure to
+        // set it after localStore / remoteStore are started.
+        await this.persistence.di((() => (this.gcScheduler && !this.gcScheduler.started && this.gcScheduler.start(), 
+        this.indexBackfillerScheduler && !this.indexBackfillerScheduler.started && this.indexBackfillerScheduler.start(), 
+        Promise.resolve())));
+    }
+    Ec(t) {
+        return Qo(this.persistence, new Ko, t.initialUser, this.Tt);
+    }
+    Ac(t, e) {
+        const n = this.persistence.referenceDelegate.garbageCollector;
+        return new co(n, t.asyncQueue, e);
+    }
+    Rc(t, e) {
+        const n = new kt(e, this.persistence);
+        return new Nt(t.asyncQueue, n);
+    }
+    Tc(t) {
+        const e = qo(t.databaseInfo.databaseId, t.databaseInfo.persistenceKey), n = void 0 !== this.cacheSizeBytes ? zr.withCacheSize(this.cacheSizeBytes) : zr.DEFAULT;
+        return new $o(this.synchronizeTabs, e, t.clientId, n, t.asyncQueue, Tu(), Eu(), this.Tt, this.sharedClientState, !!this.forceOwnership);
+    }
+    Ic(t) {
+        return new wu;
+    }
+}
+
+/**
+ * Provides all components needed for Firestore with multi-tab IndexedDB
+ * persistence.
+ *
+ * In the legacy client, this provider is used to provide both multi-tab and
+ * non-multi-tab persistence since we cannot tell at build time whether
+ * `synchronizeTabs` will be enabled.
+ */ class aa extends ca {
+    constructor(t, e) {
+        super(t, e, /* forceOwnership= */ !1), this.bc = t, this.cacheSizeBytes = e, this.synchronizeTabs = !0;
+    }
+    async initialize(t) {
+        await super.initialize(t);
+        const e = this.bc.syncEngine;
+        this.sharedClientState instanceof _u && (this.sharedClientState.syncEngine = {
+            Br: Yc.bind(null, e),
+            Lr: na.bind(null, e),
+            qr: sa.bind(null, e),
+            Si: ea.bind(null, e),
+            $r: Jc.bind(null, e)
+        }, await this.sharedClientState.start()), 
+        // NOTE: This will immediately call the listener, so we make sure to
+        // set it after localStore / remoteStore are started.
+        await this.persistence.di((async t => {
+            await Zc(this.bc.syncEngine, t), this.gcScheduler && (t && !this.gcScheduler.started ? this.gcScheduler.start() : t || this.gcScheduler.stop()), 
+            this.indexBackfillerScheduler && (t && !this.indexBackfillerScheduler.started ? this.indexBackfillerScheduler.start() : t || this.indexBackfillerScheduler.stop());
+        }));
+    }
+    Ic(t) {
+        const e = Tu();
+        if (!_u.C(e)) throw new L$1(B.UNIMPLEMENTED, "IndexedDB persistence is only available on platforms that support LocalStorage.");
+        const n = qo(t.databaseInfo.databaseId, t.databaseInfo.persistenceKey);
+        return new _u(e, t.asyncQueue, n, t.clientId, t.initialUser);
     }
 }
 
@@ -19170,6 +30043,59 @@ class ua {
             e.pu.set("Unknown" /* OnlineState.Unknown */);
         }(this.remoteStore);
     }
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * How many bytes to read each time when `ReadableStreamReader.read()` is
+ * called. Only applicable for byte streams that we control (e.g. those backed
+ * by an UInt8Array).
+ */
+/**
+ * Builds a `ByteStreamReader` from a UInt8Array.
+ * @param source - The data source to use.
+ * @param bytesPerRead - How many bytes each `read()` from the returned reader
+ *        will read.
+ */
+function la(t, e = 10240) {
+    let n = 0;
+    // The TypeScript definition for ReadableStreamReader changed. We use
+    // `any` here to allow this code to compile with different versions.
+    // See https://github.com/microsoft/TypeScript/issues/42970
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        async read() {
+            if (n < t.byteLength) {
+                const s = {
+                    value: t.slice(n, n + e),
+                    done: !1
+                };
+                return n += e, s;
+            }
+            return {
+                done: !0
+            };
+        },
+        async cancel() {},
+        releaseLock() {},
+        closed: Promise.resolve()
+    };
 }
 
 /**
@@ -19239,6 +30165,331 @@ class fa {
 
 /**
  * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * A class representing a bundle.
+ *
+ * Takes a bundle stream or buffer, and presents abstractions to read bundled
+ * elements out of the underlying content.
+ */ class da {
+    constructor(
+    /** The reader to read from underlying binary bundle data source. */
+    t, e) {
+        this.Vc = t, this.Tt = e, 
+        /** Cached bundle metadata. */
+        this.metadata = new q, 
+        /**
+         * Internal buffer to hold bundle content, accumulating incomplete element
+         * content.
+         */
+        this.buffer = new Uint8Array, this.Sc = new TextDecoder("utf-8"), 
+        // Read the metadata (which is the first element).
+        this.Dc().then((t => {
+            t && t.Fu() ? this.metadata.resolve(t.Mu.metadata) : this.metadata.reject(new Error(`The first element of the bundle is not a metadata, it is\n             ${JSON.stringify(null == t ? void 0 : t.Mu)}`));
+        }), (t => this.metadata.reject(t)));
+    }
+    close() {
+        return this.Vc.cancel();
+    }
+    async getMetadata() {
+        return this.metadata.promise;
+    }
+    async yc() {
+        // Makes sure metadata is read before proceeding.
+        return await this.getMetadata(), this.Dc();
+    }
+    /**
+     * Reads from the head of internal buffer, and pulling more data from
+     * underlying stream if a complete element cannot be found, until an
+     * element(including the prefixed length and the JSON string) is found.
+     *
+     * Once a complete element is read, it is dropped from internal buffer.
+     *
+     * Returns either the bundled element, or null if we have reached the end of
+     * the stream.
+     */    async Dc() {
+        const t = await this.Cc();
+        if (null === t) return null;
+        const e = this.Sc.decode(t), n = Number(e);
+        isNaN(n) && this.xc(`length string (${e}) is not valid number`);
+        const s = await this.Nc(n);
+        return new pc(JSON.parse(s), t.length + n);
+    }
+    /** First index of '{' from the underlying buffer. */    kc() {
+        return this.buffer.findIndex((t => t === "{".charCodeAt(0)));
+    }
+    /**
+     * Reads from the beginning of the internal buffer, until the first '{', and
+     * return the content.
+     *
+     * If reached end of the stream, returns a null.
+     */    async Cc() {
+        for (;this.kc() < 0; ) {
+            if (await this.Oc()) break;
+        }
+        // Broke out of the loop because underlying stream is closed, and there
+        // happens to be no more data to process.
+                if (0 === this.buffer.length) return null;
+        const t = this.kc();
+        // Broke out of the loop because underlying stream is closed, but still
+        // cannot find an open bracket.
+                t < 0 && this.xc("Reached the end of bundle when a length string is expected.");
+        const e = this.buffer.slice(0, t);
+        // Update the internal buffer to drop the read length.
+                return this.buffer = this.buffer.slice(t), e;
+    }
+    /**
+     * Reads from a specified position from the internal buffer, for a specified
+     * number of bytes, pulling more data from the underlying stream if needed.
+     *
+     * Returns a string decoded from the read bytes.
+     */    async Nc(t) {
+        for (;this.buffer.length < t; ) {
+            await this.Oc() && this.xc("Reached the end of bundle when more is expected.");
+        }
+        const e = this.Sc.decode(this.buffer.slice(0, t));
+        // Update the internal buffer to drop the read json string.
+                return this.buffer = this.buffer.slice(t), e;
+    }
+    xc(t) {
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        throw this.Vc.cancel(), new Error(`Invalid bundle format: ${t}`);
+    }
+    /**
+     * Pulls more data from underlying stream to internal buffer.
+     * Returns a boolean indicating whether the stream is finished.
+     */    async Oc() {
+        const t = await this.Vc.read();
+        if (!t.done) {
+            const e = new Uint8Array(this.buffer.length + t.value.length);
+            e.set(this.buffer), e.set(t.value, this.buffer.length), this.buffer = e;
+        }
+        return t.done;
+    }
+}
+
+/**
+ * @license
+ * Copyright 2017 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Internal transaction object responsible for accumulating the mutations to
+ * perform and the base versions for any documents read.
+ */
+class _a {
+    constructor(t) {
+        this.datastore = t, 
+        // The version of each document that was read during this transaction.
+        this.readVersions = new Map, this.mutations = [], this.committed = !1, 
+        /**
+         * A deferred usage error that occurred previously in this transaction that
+         * will cause the transaction to fail once it actually commits.
+         */
+        this.lastWriteError = null, 
+        /**
+         * Set of documents that have been written in the transaction.
+         *
+         * When there's more than one write to the same key in a transaction, any
+         * writes after the first are handled differently.
+         */
+        this.writtenDocs = new Set;
+    }
+    async lookup(t) {
+        if (this.ensureCommitNotCalled(), this.mutations.length > 0) throw new L$1(B.INVALID_ARGUMENT, "Firestore transactions require all reads to be executed before all writes.");
+        const e = await async function(t, e) {
+            const n = $$1(t), s = Zs(n.Tt) + "/documents", i = {
+                documents: e.map((t => Ws(n.Tt, t)))
+            }, r = await n.mo("BatchGetDocuments", s, i, e.length), o = new Map;
+            r.forEach((t => {
+                const e = ni(n.Tt, t);
+                o.set(e.key.toString(), e);
+            }));
+            const u = [];
+            return e.forEach((t => {
+                const e = o.get(t.toString());
+                M$1(!!e), u.push(e);
+            })), u;
+        }(this.datastore, t);
+        return e.forEach((t => this.recordVersion(t))), e;
+    }
+    set(t, e) {
+        this.write(e.toMutation(t, this.precondition(t))), this.writtenDocs.add(t.toString());
+    }
+    update(t, e) {
+        try {
+            this.write(e.toMutation(t, this.preconditionForUpdate(t)));
+        } catch (t) {
+            this.lastWriteError = t;
+        }
+        this.writtenDocs.add(t.toString());
+    }
+    delete(t) {
+        this.write(new cs(t, this.precondition(t))), this.writtenDocs.add(t.toString());
+    }
+    async commit() {
+        if (this.ensureCommitNotCalled(), this.lastWriteError) throw this.lastWriteError;
+        const t = this.readVersions;
+        // For each mutation, note that the doc was written.
+                this.mutations.forEach((e => {
+            t.delete(e.key.toString());
+        })), 
+        // For each document that was read but not written to, we want to perform
+        // a `verify` operation.
+        t.forEach(((t, e) => {
+            const n = ct.fromPath(e);
+            this.mutations.push(new as(n, this.precondition(n)));
+        })), await async function(t, e) {
+            const n = $$1(t), s = Zs(n.Tt) + "/documents", i = {
+                writes: e.map((t => ii(n.Tt, t)))
+            };
+            await n.lo("Commit", s, i);
+        }(this.datastore, this.mutations), this.committed = !0;
+    }
+    recordVersion(t) {
+        let e;
+        if (t.isFoundDocument()) e = t.version; else {
+            if (!t.isNoDocument()) throw O();
+            // Represent a deleted doc using SnapshotVersion.min().
+            e = st.min();
+        }
+        const n = this.readVersions.get(t.key.toString());
+        if (n) {
+            if (!e.isEqual(n)) 
+            // This transaction will fail no matter what.
+            throw new L$1(B.ABORTED, "Document version changed between two reads.");
+        } else this.readVersions.set(t.key.toString(), e);
+    }
+    /**
+     * Returns the version of this document when it was read in this transaction,
+     * as a precondition, or no precondition if it was not read.
+     */    precondition(t) {
+        const e = this.readVersions.get(t.toString());
+        return !this.writtenDocs.has(t.toString()) && e ? e.isEqual(st.min()) ? Hn.exists(!1) : Hn.updateTime(e) : Hn.none();
+    }
+    /**
+     * Returns the precondition for a document if the operation is an update.
+     */    preconditionForUpdate(t) {
+        const e = this.readVersions.get(t.toString());
+        // The first time a document is written, we want to take into account the
+        // read time and existence
+                if (!this.writtenDocs.has(t.toString()) && e) {
+            if (e.isEqual(st.min())) 
+            // The document doesn't exist, so fail the transaction.
+            // This has to be validated locally because you can't send a
+            // precondition that a document does not exist without changing the
+            // semantics of the backend write to be an insert. This is the reverse
+            // of what we want, since we want to assert that the document doesn't
+            // exist but then send the update and have it fail. Since we can't
+            // express that to the backend, we have to validate locally.
+            // Note: this can change once we can send separate verify writes in the
+            // transaction.
+            throw new L$1(B.INVALID_ARGUMENT, "Can't update a document that doesn't exist.");
+            // Document exists, base precondition on document update time.
+                        return Hn.updateTime(e);
+        }
+        // Document was not read, so we just use the preconditions for a blind
+        // update.
+        return Hn.exists(!0);
+    }
+    write(t) {
+        this.ensureCommitNotCalled(), this.mutations.push(t);
+    }
+    ensureCommitNotCalled() {}
+}
+
+/**
+ * @license
+ * Copyright 2019 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * TransactionRunner encapsulates the logic needed to run and retry transactions
+ * with backoff.
+ */ class wa {
+    constructor(t, e, n, s, i) {
+        this.asyncQueue = t, this.datastore = e, this.options = n, this.updateFunction = s, 
+        this.deferred = i, this.Mc = n.maxAttempts, this.ko = new Ru(this.asyncQueue, "transaction_retry" /* TimerId.TransactionRetry */);
+    }
+    /** Runs the transaction and sets the result on deferred. */    run() {
+        this.Mc -= 1, this.Fc();
+    }
+    Fc() {
+        this.ko.vo((async () => {
+            const t = new _a(this.datastore), e = this.$c(t);
+            e && e.then((e => {
+                this.asyncQueue.enqueueAndForget((() => t.commit().then((() => {
+                    this.deferred.resolve(e);
+                })).catch((t => {
+                    this.Bc(t);
+                }))));
+            })).catch((t => {
+                this.Bc(t);
+            }));
+        }));
+    }
+    $c(t) {
+        try {
+            const e = this.updateFunction(t);
+            return !Gt(e) && e.catch && e.then ? e : (this.deferred.reject(Error("Transaction callback must return a Promise")), 
+            null);
+        } catch (t) {
+            // Do not retry errors thrown by user provided updateFunction.
+            return this.deferred.reject(t), null;
+        }
+    }
+    Bc(t) {
+        this.Mc > 0 && this.Lc(t) ? (this.Mc -= 1, this.asyncQueue.enqueueAndForget((() => (this.Fc(), 
+        Promise.resolve())))) : this.deferred.reject(t);
+    }
+    Lc(t) {
+        if ("FirebaseError" === t.name) {
+            // In transactions, the backend will fail outdated reads with FAILED_PRECONDITION and
+            // non-matching document versions with ABORTED. These errors should be retried.
+            const e = t.code;
+            return "aborted" === e || "failed-precondition" === e || "already-exists" === e || !ds(e);
+        }
+        return !1;
+    }
+}
+
+/**
+ * @license
  * Copyright 2017 Google LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -19298,7 +30549,7 @@ class ma {
      * Checks that the client has not been terminated. Ensures that other methods on
      * this class cannot be called after the client is terminated.
      */    verifyNotTerminated() {
-        if (this.asyncQueue.isShuttingDown) throw new L(B.FAILED_PRECONDITION, "The client has already been terminated.");
+        if (this.asyncQueue.isShuttingDown) throw new L$1(B.FAILED_PRECONDITION, "The client has already been terminated.");
     }
     terminate() {
         this.asyncQueue.enterRestrictedMode();
@@ -19353,14 +30604,123 @@ async function Ia(t) {
     await ya(t, new ha)), t.onlineComponents;
 }
 
+function Ta(t) {
+    return pa(t).then((t => t.persistence));
+}
+
+function Ea(t) {
+    return pa(t).then((t => t.localStore));
+}
+
+function Aa(t) {
+    return Ia(t).then((t => t.remoteStore));
+}
+
 function Ra(t) {
     return Ia(t).then((t => t.syncEngine));
+}
+
+function ba(t) {
+    return Ia(t).then((t => t.datastore));
 }
 
 async function va(t) {
     const e = await Ia(t), n = e.eventManager;
     return n.onListen = Sc.bind(null, e.syncEngine), n.onUnlisten = Cc.bind(null, e.syncEngine), 
     n;
+}
+
+/** Enables the network connection and re-enqueues all pending operations. */ function Pa(t) {
+    return t.asyncQueue.enqueue((async () => {
+        const e = await Ta(t), n = await Aa(t);
+        return e.setNetworkEnabled(!0), function(t) {
+            const e = $$1(t);
+            return e.mu.delete(0 /* OfflineCause.UserDisabled */), xu(e);
+        }(n);
+    }));
+}
+
+/** Disables the network connection. Pending operations will not complete. */ function Va(t) {
+    return t.asyncQueue.enqueue((async () => {
+        const e = await Ta(t), n = await Aa(t);
+        return e.setNetworkEnabled(!1), async function(t) {
+            const e = $$1(t);
+            e.mu.add(0 /* OfflineCause.UserDisabled */), await Nu(e), 
+            // Set the OnlineState to Offline so get()s return from cache, etc.
+            e.pu.set("Offline" /* OnlineState.Offline */);
+        }(n);
+    }));
+}
+
+/**
+ * Returns a Promise that resolves when all writes that were pending at the time
+ * this method was called received server acknowledgement. An acknowledgement
+ * can be either acceptance or rejection.
+ */ function Sa(t, e) {
+    const n = new q;
+    return t.asyncQueue.enqueueAndForget((async () => async function(t, e, n) {
+        try {
+            const s = await function(t, e) {
+                const n = $$1(t);
+                return n.persistence.runTransaction("read document", "readonly", (t => n.localDocuments.getDocument(t, e)));
+            }(t, e);
+            s.isFoundDocument() ? n.resolve(s) : s.isNoDocument() ? n.resolve(null) : n.reject(new L$1(B.UNAVAILABLE, "Failed to get document from cache. (However, this document may exist on the server. Run again without setting 'source' in the GetOptions to attempt to retrieve the document from the server.)"));
+        } catch (t) {
+            const s = uc(t, `Failed to get document '${e} from cache`);
+            n.reject(s);
+        }
+    }
+    /**
+ * Retrieves a latency-compensated document from the backend via a
+ * SnapshotListener.
+ */ (await Ea(t), e, n))), n.promise;
+}
+
+function Da(t, e, n = {}) {
+    const s = new q;
+    return t.asyncQueue.enqueueAndForget((async () => function(t, e, n, s, i) {
+        const r = new fa({
+            next: r => {
+                // Remove query first before passing event to user to avoid
+                // user actions affecting the now stale query.
+                e.enqueueAndForget((() => _c(t, o)));
+                const u = r.docs.has(n);
+                !u && r.fromCache ? 
+                // TODO(dimond): If we're online and the document doesn't
+                // exist then we resolve with a doc.exists set to false. If
+                // we're offline however, we reject the Promise in this
+                // case. Two options: 1) Cache the negative response from
+                // the server so we can deliver that even when you're
+                // offline 2) Actually reject the Promise in the online case
+                // if the document doesn't exist.
+                i.reject(new L$1(B.UNAVAILABLE, "Failed to get document because the client is offline.")) : u && r.fromCache && s && "server" === s.source ? i.reject(new L$1(B.UNAVAILABLE, 'Failed to get document from server. (However, this document does exist in the local cache. Run again without setting source to "server" to retrieve the cached document.)')) : i.resolve(r);
+            },
+            error: t => i.reject(t)
+        }), o = new yc(wn(n.path), r, {
+            includeMetadataChanges: !0,
+            Ou: !0
+        });
+        return dc(t, o);
+    }(await va(t), t.asyncQueue, e, n, s))), s.promise;
+}
+
+function Ca(t, e) {
+    const n = new q;
+    return t.asyncQueue.enqueueAndForget((async () => async function(t, e, n) {
+        try {
+            const s = await tu(t, e, 
+            /* usePreviousResults= */ !0), i = new bc(e, s.Yi), r = i.Hu(s.documents), o = i.applyChanges(r, 
+            /* updateLimboDocuments= */ !1);
+            n.resolve(o.snapshot);
+        } catch (t) {
+            const s = uc(t, `Failed to execute query '${e} against cache`);
+            n.reject(s);
+        }
+    }
+    /**
+ * Retrieves a latency-compensated query snapshot from the backend via a
+ * SnapshotListener.
+ */ (await Ea(t), e, n))), n.promise;
 }
 
 function xa(t, e, n = {}) {
@@ -19370,7 +30730,7 @@ function xa(t, e, n = {}) {
             next: n => {
                 // Remove query first before passing event to user to avoid
                 // user actions affecting the now stale query.
-                e.enqueueAndForget((() => _c(t, o))), n.fromCache && "server" === s.source ? i.reject(new L(B.UNAVAILABLE, 'Failed to get documents from server. (However, these documents may exist in the local cache. Run again without setting source to "server" to retrieve the cached documents.)')) : i.resolve(n);
+                e.enqueueAndForget((() => _c(t, o))), n.fromCache && "server" === s.source ? i.reject(new L$1(B.UNAVAILABLE, 'Failed to get documents from server. (However, these documents may exist in the local cache. Run again without setting source to "server" to retrieve the cached documents.)')) : i.resolve(n);
             },
             error: t => i.reject(t)
         }), o = new yc(n, r, {
@@ -19379,6 +30739,94 @@ function xa(t, e, n = {}) {
         });
         return dc(t, o);
     }(await va(t), t.asyncQueue, e, n, s))), s.promise;
+}
+
+function Na(t, e) {
+    const n = new fa(e);
+    return t.asyncQueue.enqueueAndForget((async () => function(t, e) {
+        $$1(t).vu.add(e), 
+        // Immediately fire an initial event, indicating all existing listeners
+        // are in-sync.
+        e.next();
+    }(await va(t), n))), () => {
+        n.Pc(), t.asyncQueue.enqueueAndForget((async () => function(t, e) {
+            $$1(t).vu.delete(e);
+        }(await va(t), n)));
+    };
+}
+
+/**
+ * Takes an updateFunction in which a set of reads and writes can be performed
+ * atomically. In the updateFunction, the client can read and write values
+ * using the supplied transaction object. After the updateFunction, all
+ * changes will be committed. If a retryable error occurs (ex: some other
+ * client has changed any of the data referenced), then the updateFunction
+ * will be called again after a backoff. If the updateFunction still fails
+ * after all retries, then the transaction will be rejected.
+ *
+ * The transaction object passed to the updateFunction contains methods for
+ * accessing documents and collections. Unlike other datastore access, data
+ * accessed with the transaction will not reflect local changes that have not
+ * been committed. For this reason, it is required that all reads are
+ * performed before any writes. Transactions must be performed while online.
+ */ function ka(t, e, n, s) {
+    const i = function(t, e) {
+        let n;
+        n = "string" == typeof t ? (new TextEncoder).encode(t) : t;
+        return function(t, e) {
+            return new da(t, e);
+        }(function(t, e) {
+            if (t instanceof Uint8Array) return la(t, e);
+            if (t instanceof ArrayBuffer) return la(new Uint8Array(t), e);
+            if (t instanceof ReadableStream) return t.getReader();
+            throw new Error("Source of `toByteStreamReader` has to be a ArrayBuffer or ReadableStream");
+        }
+        /**
+ * @license
+ * Copyright 2023 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+        /**
+ * An instance of the Platform's 'TextEncoder' implementation.
+ */ (n), e);
+    }
+    /**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */ (n, Au(e));
+    t.asyncQueue.enqueueAndForget((async () => {
+        oa(await Ra(t), i, s);
+    }));
+}
+
+function Oa(t, e) {
+    return t.asyncQueue.enqueue((async () => function(t, e) {
+        const n = $$1(t);
+        return n.persistence.runTransaction("Get named query", "readonly", (t => n.Os.getNamedQuery(t, e)));
+    }(await Ea(t), e)));
 }
 
 const Ma = new Map;
@@ -19404,28 +30852,28 @@ const Ma = new Map;
  * limitations under the License.
  */
 function Fa(t, e, n) {
-    if (!n) throw new L(B.INVALID_ARGUMENT, `Function ${t}() cannot be called with an empty ${e}.`);
+    if (!n) throw new L$1(B.INVALID_ARGUMENT, `Function ${t}() cannot be called with an empty ${e}.`);
 }
 
 /**
  * Validates that two boolean options are not set at the same time.
  * @internal
  */ function $a(t, e, n, s) {
-    if (!0 === e && !0 === s) throw new L(B.INVALID_ARGUMENT, `${t} and ${n} cannot be used together.`);
+    if (!0 === e && !0 === s) throw new L$1(B.INVALID_ARGUMENT, `${t} and ${n} cannot be used together.`);
 }
 
 /**
  * Validates that `path` refers to a document (indicated by the fact it contains
  * an even numbers of segments).
  */ function Ba(t) {
-    if (!ct.isDocumentKey(t)) throw new L(B.INVALID_ARGUMENT, `Invalid document reference. Document references must have an even number of segments, but ${t} has ${t.length}.`);
+    if (!ct.isDocumentKey(t)) throw new L$1(B.INVALID_ARGUMENT, `Invalid document reference. Document references must have an even number of segments, but ${t} has ${t.length}.`);
 }
 
 /**
  * Validates that `path` refers to a collection (indicated by the fact it
  * contains an odd numbers of segments).
  */ function La(t) {
-    if (ct.isDocumentKey(t)) throw new L(B.INVALID_ARGUMENT, `Invalid collection reference. Collection references must have an odd number of segments, but ${t} has ${t.length}.`);
+    if (ct.isDocumentKey(t)) throw new L$1(B.INVALID_ARGUMENT, `Invalid collection reference. Collection references must have an odd number of segments, but ${t} has ${t.length}.`);
 }
 
 /**
@@ -19469,13 +30917,17 @@ e) {
     // Unwrap Compat types
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     t = t._delegate), !(t instanceof e)) {
-        if (e.name === t.constructor.name) throw new L(B.INVALID_ARGUMENT, "Type does not match the expected instance. Did you pass a reference from a different Firestore SDK?");
+        if (e.name === t.constructor.name) throw new L$1(B.INVALID_ARGUMENT, "Type does not match the expected instance. Did you pass a reference from a different Firestore SDK?");
         {
             const n = qa(t);
-            throw new L(B.INVALID_ARGUMENT, `Expected type '${e.name}', but it was: ${n}`);
+            throw new L$1(B.INVALID_ARGUMENT, `Expected type '${e.name}', but it was: ${n}`);
         }
     }
     return t;
+}
+
+function Ka(t, e) {
+    if (e <= 0) throw new L$1(B.INVALID_ARGUMENT, `Function ${t}() requires a positive number, but it was: ${e}.`);
 }
 
 /**
@@ -19504,12 +30956,12 @@ class Ga {
     constructor(t) {
         var e;
         if (void 0 === t.host) {
-            if (void 0 !== t.ssl) throw new L(B.INVALID_ARGUMENT, "Can't provide ssl option if host option is not set");
+            if (void 0 !== t.ssl) throw new L$1(B.INVALID_ARGUMENT, "Can't provide ssl option if host option is not set");
             this.host = "firestore.googleapis.com", this.ssl = true;
         } else this.host = t.host, this.ssl = null === (e = t.ssl) || void 0 === e || e;
         if (this.credentials = t.credentials, this.ignoreUndefinedProperties = !!t.ignoreUndefinedProperties, 
         void 0 === t.cacheSizeBytes) this.cacheSizeBytes = 41943040; else {
-            if (-1 !== t.cacheSizeBytes && t.cacheSizeBytes < 1048576) throw new L(B.INVALID_ARGUMENT, "cacheSizeBytes must be at least 1048576");
+            if (-1 !== t.cacheSizeBytes && t.cacheSizeBytes < 1048576) throw new L$1(B.INVALID_ARGUMENT, "cacheSizeBytes must be at least 1048576");
             this.cacheSizeBytes = t.cacheSizeBytes;
         }
         this.experimentalForceLongPolling = !!t.experimentalForceLongPolling, this.experimentalAutoDetectLongPolling = !!t.experimentalAutoDetectLongPolling, 
@@ -19555,7 +31007,7 @@ class Ga {
      * The {@link @firebase/app#FirebaseApp} associated with this `Firestore` service
      * instance.
      */    get app() {
-        if (!this._app) throw new L(B.FAILED_PRECONDITION, "Firestore was not initialized using the Firebase SDK. 'app' is not available");
+        if (!this._app) throw new L$1(B.FAILED_PRECONDITION, "Firestore was not initialized using the Firebase SDK. 'app' is not available");
         return this._app;
     }
     get _initialized() {
@@ -19565,7 +31017,7 @@ class Ga {
         return void 0 !== this._terminateTask;
     }
     _setSettings(t) {
-        if (this._settingsFrozen) throw new L(B.FAILED_PRECONDITION, "Firestore has already been started and its settings can no longer be changed. You can only modify settings before calling any other methods on a Firestore object.");
+        if (this._settingsFrozen) throw new L$1(B.FAILED_PRECONDITION, "Firestore has already been started and its settings can no longer be changed. You can only modify settings before calling any other methods on a Firestore object.");
         this._settings = new Ga(t), void 0 !== t.credentials && (this._authCredentials = function(t) {
             if (!t) return new K;
             switch (t.type) {
@@ -19577,7 +31029,7 @@ class Ga {
                 return t.client;
 
               default:
-                throw new L(B.INVALID_ARGUMENT, "makeAuthCredentialsProvider failed due to invalid credential type");
+                throw new L$1(B.INVALID_ARGUMENT, "makeAuthCredentialsProvider failed due to invalid credential type");
             }
         }(t.credentials));
     }
@@ -19641,7 +31093,7 @@ class Ga {
             // invalid field "uid" and missing field "sub" / "user_id".)
             e = createMockUserToken(s.mockUserToken, null === (i = t._app) || void 0 === i ? void 0 : i.options.projectId);
             const r = s.mockUserToken.sub || s.mockUserToken.user_id;
-            if (!r) throw new L(B.INVALID_ARGUMENT, "mockUserToken must contain 'sub' or 'user_id' field!");
+            if (!r) throw new L$1(B.INVALID_ARGUMENT, "mockUserToken must contain 'sub' or 'user_id' field!");
             n = new v$1(r);
         }
         t._authCredentials = new G(new U(e, n));
@@ -19761,11 +31213,31 @@ function Ja(t, e, ...n) {
         return La(s), new Ha(t, /* converter= */ null, s);
     }
     {
-        if (!(t instanceof za || t instanceof Ha)) throw new L(B.INVALID_ARGUMENT, "Expected first argument to collection() to be a CollectionReference, a DocumentReference or FirebaseFirestore");
+        if (!(t instanceof za || t instanceof Ha)) throw new L$1(B.INVALID_ARGUMENT, "Expected first argument to collection() to be a CollectionReference, a DocumentReference or FirebaseFirestore");
         const s = t._path.child(rt.fromString(e, ...n));
         return La(s), new Ha(t.firestore, 
         /* converter= */ null, s);
     }
+}
+
+// TODO(firestorelite): Consider using ErrorFactory -
+// https://github.com/firebase/firebase-js-sdk/blob/0131e1f/packages/util/src/errors.ts#L106
+/**
+ * Creates and returns a new `Query` instance that includes all documents in the
+ * database that are contained in a collection or subcollection with the
+ * given `collectionId`.
+ *
+ * @param firestore - A reference to the root `Firestore` instance.
+ * @param collectionId - Identifies the collections to query over. Every
+ * collection or subcollection with this ID as the last segment of its path
+ * will be included. Cannot contain a slash.
+ * @returns The created `Query`.
+ */ function Ya(t, e) {
+    if (t = Ua(t, Qa), Fa("collectionGroup", "collection id", e), e.indexOf("/") >= 0) throw new L$1(B.INVALID_ARGUMENT, `Invalid collection ID '${e}' passed to function collectionGroup(). Collection IDs must not contain '/'.`);
+    return new Wa(t, 
+    /* converter= */ null, function(t) {
+        return new dn(rt.emptyPath(), t);
+    }(e));
 }
 
 function Za(t, e, ...n) {
@@ -19778,10 +31250,33 @@ function Za(t, e, ...n) {
         /* converter= */ null, new ct(s));
     }
     {
-        if (!(t instanceof za || t instanceof Ha)) throw new L(B.INVALID_ARGUMENT, "Expected first argument to collection() to be a CollectionReference, a DocumentReference or FirebaseFirestore");
+        if (!(t instanceof za || t instanceof Ha)) throw new L$1(B.INVALID_ARGUMENT, "Expected first argument to collection() to be a CollectionReference, a DocumentReference or FirebaseFirestore");
         const s = t._path.child(rt.fromString(e, ...n));
         return Ba(s), new za(t.firestore, t instanceof Ha ? t.converter : null, new ct(s));
     }
+}
+
+/**
+ * Returns true if the provided references are equal.
+ *
+ * @param left - A reference to compare.
+ * @param right - A reference to compare.
+ * @returns true if the references point to the same location in the same
+ * Firestore database.
+ */ function Xa(t, e) {
+    return t = getModularInstance(t), e = getModularInstance(e), (t instanceof za || t instanceof Ha) && (e instanceof za || e instanceof Ha) && (t.firestore === e.firestore && t.path === e.path && t.converter === e.converter);
+}
+
+/**
+ * Returns true if the provided queries point to the same collection and apply
+ * the same constraints.
+ *
+ * @param left - A `Query` to compare.
+ * @param right - A `Query` to compare.
+ * @returns true if the references point to the same location in the same
+ * Firestore database.
+ */ function th(t, e) {
+    return t = getModularInstance(t), e = getModularInstance(e), t instanceof Wa && e instanceof Wa && (t.firestore === e.firestore && Rn(t._query, e._query) && t.converter === e.converter);
 }
 
 /**
@@ -20025,6 +31520,92 @@ function nh(t) {
  */ (t, [ "next", "error", "complete" ]);
 }
 
+class sh {
+    constructor() {
+        this._progressObserver = {}, this._taskCompletionResolver = new q, this._lastProgress = {
+            taskState: "Running",
+            totalBytes: 0,
+            totalDocuments: 0,
+            bytesLoaded: 0,
+            documentsLoaded: 0
+        };
+    }
+    /**
+     * Registers functions to listen to bundle loading progress events.
+     * @param next - Called when there is a progress update from bundle loading. Typically `next` calls occur
+     *   each time a Firestore document is loaded from the bundle.
+     * @param error - Called when an error occurs during bundle loading. The task aborts after reporting the
+     *   error, and there should be no more updates after this.
+     * @param complete - Called when the loading task is complete.
+     */    onProgress(t, e, n) {
+        this._progressObserver = {
+            next: t,
+            error: e,
+            complete: n
+        };
+    }
+    /**
+     * Implements the `Promise<LoadBundleTaskProgress>.catch` interface.
+     *
+     * @param onRejected - Called when an error occurs during bundle loading.
+     */    catch(t) {
+        return this._taskCompletionResolver.promise.catch(t);
+    }
+    /**
+     * Implements the `Promise<LoadBundleTaskProgress>.then` interface.
+     *
+     * @param onFulfilled - Called on the completion of the loading task with a final `LoadBundleTaskProgress` update.
+     *   The update will always have its `taskState` set to `"Success"`.
+     * @param onRejected - Called when an error occurs during bundle loading.
+     */    then(t, e) {
+        return this._taskCompletionResolver.promise.then(t, e);
+    }
+    /**
+     * Notifies all observers that bundle loading has completed, with a provided
+     * `LoadBundleTaskProgress` object.
+     *
+     * @private
+     */    _completeWith(t) {
+        this._updateProgress(t), this._progressObserver.complete && this._progressObserver.complete(), 
+        this._taskCompletionResolver.resolve(t);
+    }
+    /**
+     * Notifies all observers that bundle loading has failed, with a provided
+     * `Error` as the reason.
+     *
+     * @private
+     */    _failWith(t) {
+        this._lastProgress.taskState = "Error", this._progressObserver.next && this._progressObserver.next(this._lastProgress), 
+        this._progressObserver.error && this._progressObserver.error(t), this._taskCompletionResolver.reject(t);
+    }
+    /**
+     * Notifies a progress update of loading a bundle.
+     * @param progress - The new progress.
+     *
+     * @private
+     */    _updateProgress(t) {
+        this._lastProgress = t, this._progressObserver.next && this._progressObserver.next(t);
+    }
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/** DOMException error code constants. */ const ih = -1;
+
 /**
  * The Cloud Firestore service interface.
  *
@@ -20045,6 +31626,34 @@ class rh extends Qa {
         // usage throws an exception.
         ah(this), this._firestoreClient.terminate();
     }
+}
+
+/**
+ * Initializes a new instance of {@link Firestore} with the provided settings.
+ * Can only be called before any other function, including
+ * {@link (getFirestore:1)}. If the custom settings are empty, this function is
+ * equivalent to calling {@link (getFirestore:1)}.
+ *
+ * @param app - The {@link @firebase/app#FirebaseApp} with which the {@link Firestore} instance will
+ * be associated.
+ * @param settings - A settings object to configure the {@link Firestore} instance.
+ * @param databaseId - The name of database.
+ * @returns A newly initialized {@link Firestore} instance.
+ */ function oh(t, e, n) {
+    n || (n = "(default)");
+    const s = _getProvider(t, "firestore");
+    if (s.isInitialized(n)) {
+        const t = s.getImmediate({
+            identifier: n
+        }), i = s.getOptions(n);
+        if (deepEqual(i, e)) return t;
+        throw new L$1(B.FAILED_PRECONDITION, "initializeFirestore() has already been called with different options. To avoid this error, call initializeFirestore() with the same options as when it was originally called, or call getFirestore() to return the already initialized instance.");
+    }
+    if (void 0 !== e.cacheSizeBytes && -1 !== e.cacheSizeBytes && e.cacheSizeBytes < 1048576) throw new L$1(B.INVALID_ARGUMENT, "cacheSizeBytes must be at least 1048576");
+    return s.initialize({
+        options: e,
+        instanceIdentifier: n
+    });
 }
 
 function uh(e, n) {
@@ -20070,6 +31679,351 @@ function ah(t) {
         return new Bt(t, e, n, s.host, s.ssl, s.experimentalForceLongPolling, s.experimentalAutoDetectLongPolling, s.useFetchStreams);
     }(t._databaseId, (null === (e = t._app) || void 0 === e ? void 0 : e.options.appId) || "", t._persistenceKey, n);
     t._firestoreClient = new ma(t._authCredentials, t._appCheckCredentials, t._queue, s);
+}
+
+/**
+ * Attempts to enable persistent storage, if possible.
+ *
+ * Must be called before any other functions (other than
+ * {@link initializeFirestore}, {@link (getFirestore:1)} or
+ * {@link clearIndexedDbPersistence}.
+ *
+ * If this fails, `enableIndexedDbPersistence()` will reject the promise it
+ * returns. Note that even after this failure, the {@link Firestore} instance will
+ * remain usable, however offline persistence will be disabled.
+ *
+ * There are several reasons why this can fail, which can be identified by
+ * the `code` on the error.
+ *
+ *   * failed-precondition: The app is already open in another browser tab.
+ *   * unimplemented: The browser is incompatible with the offline
+ *     persistence implementation.
+ *
+ * @param firestore - The {@link Firestore} instance to enable persistence for.
+ * @param persistenceSettings - Optional settings object to configure
+ * persistence.
+ * @returns A `Promise` that represents successfully enabling persistent storage.
+ */ function hh(t, e) {
+    Ih(t = Ua(t, rh));
+    const n = ch(t), s = t._freezeSettings(), i = new ha;
+    return fh(n, i, new ca(i, s.cacheSizeBytes, null == e ? void 0 : e.forceOwnership));
+}
+
+/**
+ * Attempts to enable multi-tab persistent storage, if possible. If enabled
+ * across all tabs, all operations share access to local persistence, including
+ * shared execution of queries and latency-compensated local document updates
+ * across all connected instances.
+ *
+ * If this fails, `enableMultiTabIndexedDbPersistence()` will reject the promise
+ * it returns. Note that even after this failure, the {@link Firestore} instance will
+ * remain usable, however offline persistence will be disabled.
+ *
+ * There are several reasons why this can fail, which can be identified by
+ * the `code` on the error.
+ *
+ *   * failed-precondition: The app is already open in another browser tab and
+ *     multi-tab is not enabled.
+ *   * unimplemented: The browser is incompatible with the offline
+ *     persistence implementation.
+ *
+ * @param firestore - The {@link Firestore} instance to enable persistence for.
+ * @returns A `Promise` that represents successfully enabling persistent
+ * storage.
+ */ function lh(t) {
+    Ih(t = Ua(t, rh));
+    const e = ch(t), n = t._freezeSettings(), s = new ha;
+    return fh(e, s, new aa(s, n.cacheSizeBytes));
+}
+
+/**
+ * Registers both the `OfflineComponentProvider` and `OnlineComponentProvider`.
+ * If the operation fails with a recoverable error (see
+ * `canRecoverFromIndexedDbError()` below), the returned Promise is rejected
+ * but the client remains usable.
+ */ function fh(t, e, n) {
+    const s = new q;
+    return t.asyncQueue.enqueue((async () => {
+        try {
+            await ga(t, n), await ya(t, e), s.resolve();
+        } catch (t) {
+            const e = t;
+            if (!
+            /**
+ * Decides whether the provided error allows us to gracefully disable
+ * persistence (as opposed to crashing the client).
+ */
+            function(t) {
+                if ("FirebaseError" === t.name) return t.code === B.FAILED_PRECONDITION || t.code === B.UNIMPLEMENTED;
+                if ("undefined" != typeof DOMException && t instanceof DOMException) 
+                // There are a few known circumstances where we can open IndexedDb but
+                // trying to read/write will fail (e.g. quota exceeded). For
+                // well-understood cases, we attempt to detect these and then gracefully
+                // fall back to memory persistence.
+                // NOTE: Rather than continue to add to this list, we could decide to
+                // always fall back, with the risk that we might accidentally hide errors
+                // representing actual SDK bugs.
+                // When the browser is out of quota we could get either quota exceeded
+                // or an aborted error depending on whether the error happened during
+                // schema migration.
+                return 22 === t.code || 20 === t.code || 
+                // Firefox Private Browsing mode disables IndexedDb and returns
+                // INVALID_STATE for any usage.
+                11 === t.code;
+                return !0;
+            }
+            /**
+ * Clears the persistent storage. This includes pending writes and cached
+ * documents.
+ *
+ * Must be called while the {@link Firestore} instance is not started (after the app is
+ * terminated or when the app is first initialized). On startup, this function
+ * must be called before other functions (other than {@link
+ * initializeFirestore} or {@link (getFirestore:1)})). If the {@link Firestore}
+ * instance is still running, the promise will be rejected with the error code
+ * of `failed-precondition`.
+ *
+ * Note: `clearIndexedDbPersistence()` is primarily intended to help write
+ * reliable tests that use Cloud Firestore. It uses an efficient mechanism for
+ * dropping existing data but does not attempt to securely overwrite or
+ * otherwise make cached data unrecoverable. For applications that are sensitive
+ * to the disclosure of cached data in between user sessions, we strongly
+ * recommend not enabling persistence at all.
+ *
+ * @param firestore - The {@link Firestore} instance to clear persistence for.
+ * @returns A `Promise` that is resolved when the persistent storage is
+ * cleared. Otherwise, the promise is rejected with an error.
+ */ (e)) throw e;
+            N$1("Error enabling offline persistence. Falling back to persistence disabled: " + e), 
+            s.reject(e);
+        }
+    })).then((() => s.promise));
+}
+
+function dh(t) {
+    if (t._initialized && !t._terminated) throw new L$1(B.FAILED_PRECONDITION, "Persistence can only be cleared before a Firestore instance is initialized or after it is terminated.");
+    const e = new q;
+    return t._queue.enqueueAndForgetEvenWhileRestricted((async () => {
+        try {
+            await async function(t) {
+                if (!bt.C()) return Promise.resolve();
+                const e = t + "main";
+                await bt.delete(e);
+            }
+            /**
+ * @license
+ * Copyright 2017 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+            /**
+ * Compares two array for equality using comparator. The method computes the
+ * intersection and invokes `onAdd` for every element that is in `after` but not
+ * `before`. `onRemove` is invoked for every element in `before` but missing
+ * from `after`.
+ *
+ * The method creates a copy of both `before` and `after` and runs in O(n log
+ * n), where n is the size of the two lists.
+ *
+ * @param before - The elements that exist in the original array.
+ * @param after - The elements to diff against the original array.
+ * @param comparator - The comparator for the elements in before and after.
+ * @param onAdd - A function to invoke for every element that is part of `
+ * after` but not `before`.
+ * @param onRemove - A function to invoke for every element that is part of
+ * `before` but not `after`.
+ */ (qo(t._databaseId, t._persistenceKey)), e.resolve();
+        } catch (t) {
+            e.reject(t);
+        }
+    })), e.promise;
+}
+
+/**
+ * Waits until all currently pending writes for the active user have been
+ * acknowledged by the backend.
+ *
+ * The returned promise resolves immediately if there are no outstanding writes.
+ * Otherwise, the promise waits for all previously issued writes (including
+ * those written in a previous app session), but it does not wait for writes
+ * that were added after the function is called. If you want to wait for
+ * additional writes, call `waitForPendingWrites()` again.
+ *
+ * Any outstanding `waitForPendingWrites()` promises are rejected during user
+ * changes.
+ *
+ * @returns A `Promise` which resolves when all currently pending writes have been
+ * acknowledged by the backend.
+ */ function _h(t) {
+    return function(t) {
+        const e = new q;
+        return t.asyncQueue.enqueueAndForget((async () => $c(await Ra(t), e))), e.promise;
+    }(ch(t = Ua(t, rh)));
+}
+
+/**
+ * Re-enables use of the network for this {@link Firestore} instance after a prior
+ * call to {@link disableNetwork}.
+ *
+ * @returns A `Promise` that is resolved once the network has been enabled.
+ */ function wh(t) {
+    return Pa(ch(t = Ua(t, rh)));
+}
+
+/**
+ * Disables network usage for this instance. It can be re-enabled via {@link
+ * enableNetwork}. While the network is disabled, any snapshot listeners,
+ * `getDoc()` or `getDocs()` calls will return results from cache, and any write
+ * operations will be queued until the network is restored.
+ *
+ * @returns A `Promise` that is resolved once the network has been disabled.
+ */ function mh(t) {
+    return Va(ch(t = Ua(t, rh)));
+}
+
+/**
+ * Terminates the provided {@link Firestore} instance.
+ *
+ * After calling `terminate()` only the `clearIndexedDbPersistence()` function
+ * may be used. Any other function will throw a `FirestoreError`.
+ *
+ * To restart after termination, create a new instance of FirebaseFirestore with
+ * {@link (getFirestore:1)}.
+ *
+ * Termination does not cancel any pending writes, and any promises that are
+ * awaiting a response from the server will not be resolved. If you have
+ * persistence enabled, the next time you start this instance, it will resume
+ * sending these writes to the server.
+ *
+ * Note: Under normal circumstances, calling `terminate()` is not required. This
+ * function is useful only when you want to force this instance to release all
+ * of its resources or in combination with `clearIndexedDbPersistence()` to
+ * ensure that all local state is destroyed between test runs.
+ *
+ * @returns A `Promise` that is resolved when the instance has been successfully
+ * terminated.
+ */ function gh(t) {
+    return _removeServiceInstance(t.app, "firestore", t._databaseId.database), t._delete();
+}
+
+/**
+ * Loads a Firestore bundle into the local cache.
+ *
+ * @param firestore - The {@link Firestore} instance to load bundles for.
+ * @param bundleData - An object representing the bundle to be loaded. Valid
+ * objects are `ArrayBuffer`, `ReadableStream<Uint8Array>` or `string`.
+ *
+ * @returns A `LoadBundleTask` object, which notifies callers with progress
+ * updates, and completion or error events. It can be used as a
+ * `Promise<LoadBundleTaskProgress>`.
+ */ function yh(t, e) {
+    const n = ch(t = Ua(t, rh)), s = new sh;
+    return ka(n, t._databaseId, e, s), s;
+}
+
+/**
+ * Reads a Firestore {@link Query} from local cache, identified by the given
+ * name.
+ *
+ * The named queries are packaged  into bundles on the server side (along
+ * with resulting documents), and loaded to local cache using `loadBundle`. Once
+ * in local cache, use this method to extract a {@link Query} by name.
+ *
+ * @param firestore - The {@link Firestore} instance to read the query from.
+ * @param name - The name of the query.
+ * @returns A `Promise` that is resolved with the Query or `null`.
+ */ function ph(t, e) {
+    return Oa(ch(t = Ua(t, rh)), e).then((e => e ? new Wa(t, null, e.query) : null));
+}
+
+function Ih(t) {
+    if (t._initialized || t._terminated) throw new L$1(B.FAILED_PRECONDITION, "Firestore has already been started and persistence can no longer be enabled. You can only enable persistence before calling any other methods on a Firestore object.");
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * @license
+ * Copyright 2022 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Represents an aggregation that can be performed by Firestore.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+class Th {
+    /**
+     * Create a new AggregateField<T>
+     * @param _aggregateType Specifies the type of aggregation operation to perform.
+     * @param _internalFieldPath Optionally specifies the field that is aggregated.
+     * @internal
+     */
+    constructor(
+    // TODO (sum/avg) make aggregateType public when the feature is supported
+    t = "count", e) {
+        this._aggregateType = t, this._internalFieldPath = e, 
+        /** A type string to uniquely identify instances of this class. */
+        this.type = "AggregateField";
+    }
+}
+
+/**
+ * The results of executing an aggregation query.
+ */ class Eh {
+    /** @hideconstructor */
+    constructor(t, e, n) {
+        this._userDataWriter = e, this._data = n, 
+        /** A type string to uniquely identify instances of this class. */
+        this.type = "AggregateQuerySnapshot", this.query = t;
+    }
+    /**
+     * Returns the results of the aggregations performed over the underlying
+     * query.
+     *
+     * The keys of the returned object will be the same as those of the
+     * `AggregateSpec` object specified to the aggregation method, and the values
+     * will be the corresponding aggregation result.
+     *
+     * @returns The results of the aggregations performed over the underlying
+     * query.
+     */    data() {
+        return this._userDataWriter.convertValue(this._data.value);
+    }
 }
 
 /**
@@ -20104,7 +32058,7 @@ function ah(t) {
         try {
             return new Ah(Ht.fromBase64String(t));
         } catch (t) {
-            throw new L(B.INVALID_ARGUMENT, "Failed to construct data from Base64 string: " + t);
+            throw new L$1(B.INVALID_ARGUMENT, "Failed to construct data from Base64 string: " + t);
         }
     }
     /**
@@ -20176,7 +32130,7 @@ function ah(t) {
      * @param fieldNames - A list of field names.
      */
     constructor(...t) {
-        for (let e = 0; e < t.length; ++e) if (0 === t[e].length) throw new L(B.INVALID_ARGUMENT, "Invalid field name at argument $(i + 1). Field names must not be empty.");
+        for (let e = 0; e < t.length; ++e) if (0 === t[e].length) throw new L$1(B.INVALID_ARGUMENT, "Invalid field name at argument $(i + 1). Field names must not be empty.");
         this._internalPath = new ut(t);
     }
     /**
@@ -20187,6 +32141,13 @@ function ah(t) {
      */    isEqual(t) {
         return this._internalPath.isEqual(t._internalPath);
     }
+}
+
+/**
+ * Returns a special sentinel `FieldPath` to refer to the ID of a document.
+ * It can be used in queries to sort or filter by the document ID.
+ */ function bh() {
+    return new Rh("__name__");
 }
 
 /**
@@ -20248,8 +32209,8 @@ function ah(t) {
      * @param longitude - The longitude as number between -180 and 180.
      */
     constructor(t, e) {
-        if (!isFinite(t) || t < -90 || t > 90) throw new L(B.INVALID_ARGUMENT, "Latitude must be a number between -90 and 90, but was: " + t);
-        if (!isFinite(e) || e < -180 || e > 180) throw new L(B.INVALID_ARGUMENT, "Longitude must be a number between -180 and 180, but was: " + e);
+        if (!isFinite(t) || t < -90 || t > 90) throw new L$1(B.INVALID_ARGUMENT, "Latitude must be a number between -90 and 90, but was: " + t);
+        if (!isFinite(e) || e < -180 || e > 180) throw new L$1(B.INVALID_ARGUMENT, "Longitude must be a number between -180 and 180, but was: " + e);
         this._lat = t, this._long = e;
     }
     /**
@@ -20307,6 +32268,17 @@ function ah(t) {
     }
     toMutation(t, e) {
         return null !== this.fieldMask ? new is(t, this.data, this.fieldMask, e, this.fieldTransforms) : new ss(t, this.data, e, this.fieldTransforms);
+    }
+}
+
+/** The result of parsing "update" data (i.e. for an updateData call). */ class Dh {
+    constructor(t, 
+    // The fieldMask does not include document transforms.
+    e, n) {
+        this.data = t, this.fieldMask = e, this.fieldTransforms = n;
+    }
+    toMutation(t, e) {
+        return new is(t, this.data, this.fieldMask, e, this.fieldTransforms);
     }
 }
 
@@ -20436,12 +32408,147 @@ function kh(t) {
         const t = [];
         for (const s of r.mergeFields) {
             const i = Hh(e, s, n);
-            if (!o.contains(i)) throw new L(B.INVALID_ARGUMENT, `Field '${i}' is specified in your field mask but missing from your input data.`);
+            if (!o.contains(i)) throw new L$1(B.INVALID_ARGUMENT, `Field '${i}' is specified in your field mask but missing from your input data.`);
             Xh(t, i) || t.push(i);
         }
         c = new tn(t), a = o.fieldTransforms.filter((t => c.covers(t.field)));
     } else c = null, a = o.fieldTransforms;
     return new Sh(new en(u), c, a);
+}
+
+class Mh extends vh {
+    _toFieldTransform(t) {
+        if (2 /* UserDataSource.MergeSet */ !== t.ra) throw 1 /* UserDataSource.Update */ === t.ra ? t.fa(`${this._methodName}() can only appear at the top level of your update data`) : t.fa(`${this._methodName}() cannot be used with set() unless you pass {merge:true}`);
+        // No transform to add for a delete, but we need to add it to our
+        // fieldMask so it gets deleted.
+        return t.fieldMask.push(t.path), null;
+    }
+    isEqual(t) {
+        return t instanceof Mh;
+    }
+}
+
+/**
+ * Creates a child context for parsing SerializableFieldValues.
+ *
+ * This is different than calling `ParseContext.contextWith` because it keeps
+ * the fieldTransforms and fieldMask separate.
+ *
+ * The created context has its `dataSource` set to `UserDataSource.Argument`.
+ * Although these values are used with writes, any elements in these FieldValues
+ * are not considered writes since they cannot contain any FieldValue sentinels,
+ * etc.
+ *
+ * @param fieldValue - The sentinel FieldValue for which to create a child
+ *     context.
+ * @param context - The parent context.
+ * @param arrayElement - Whether or not the FieldValue has an array.
+ */ function Fh(t, e, n) {
+    return new xh({
+        ra: 3 /* UserDataSource.Argument */ ,
+        _a: e.settings._a,
+        methodName: t._methodName,
+        ca: n
+    }, e.databaseId, e.Tt, e.ignoreUndefinedProperties);
+}
+
+class $h extends vh {
+    _toFieldTransform(t) {
+        return new jn(t.path, new $n);
+    }
+    isEqual(t) {
+        return t instanceof $h;
+    }
+}
+
+class Bh extends vh {
+    constructor(t, e) {
+        super(t), this.ma = e;
+    }
+    _toFieldTransform(t) {
+        const e = Fh(this, t, 
+        /*array=*/ !0), n = this.ma.map((t => Qh(t, e))), s = new Bn(n);
+        return new jn(t.path, s);
+    }
+    isEqual(t) {
+        // TODO(mrschmidt): Implement isEquals
+        return this === t;
+    }
+}
+
+class Lh extends vh {
+    constructor(t, e) {
+        super(t), this.ma = e;
+    }
+    _toFieldTransform(t) {
+        const e = Fh(this, t, 
+        /*array=*/ !0), n = this.ma.map((t => Qh(t, e))), s = new qn(n);
+        return new jn(t.path, s);
+    }
+    isEqual(t) {
+        // TODO(mrschmidt): Implement isEquals
+        return this === t;
+    }
+}
+
+class qh extends vh {
+    constructor(t, e) {
+        super(t), this.ga = e;
+    }
+    _toFieldTransform(t) {
+        const e = new Kn(t.Tt, Nn(t.Tt, this.ga));
+        return new jn(t.path, e);
+    }
+    isEqual(t) {
+        // TODO(mrschmidt): Implement isEquals
+        return this === t;
+    }
+}
+
+/** Parse update data from an update() call. */ function Uh(t, e, n, s) {
+    const i = t.wa(1 /* UserDataSource.Update */ , e, n);
+    Wh("Data must be an object, but it was:", i, s);
+    const r = [], o = en.empty();
+    Ut(s, ((t, s) => {
+        const u = Yh(e, t, n);
+        // For Compat types, we have to "extract" the underlying types before
+        // performing validation.
+                s = getModularInstance(s);
+        const c = i.ha(u);
+        if (s instanceof Mh) 
+        // Add it to the field mask, but don't add anything to updateData.
+        r.push(u); else {
+            const t = Qh(s, c);
+            null != t && (r.push(u), o.set(u, t));
+        }
+    }));
+    const u = new tn(r);
+    return new Dh(o, u, i.fieldTransforms);
+}
+
+/** Parse update data from a list of field/value arguments. */ function Kh(t, e, n, s, i, r) {
+    const o = t.wa(1 /* UserDataSource.Update */ , e, n), u = [ Hh(e, s, n) ], c = [ i ];
+    if (r.length % 2 != 0) throw new L$1(B.INVALID_ARGUMENT, `Function ${e}() needs to be called with an even number of arguments that alternate between field names and values.`);
+    for (let t = 0; t < r.length; t += 2) u.push(Hh(e, r[t])), c.push(r[t + 1]);
+    const a = [], h = en.empty();
+    // We iterate in reverse order to pick the last value for a field if the
+    // user specified the field multiple times.
+    for (let t = u.length - 1; t >= 0; --t) if (!Xh(a, u[t])) {
+        const e = u[t];
+        let n = c[t];
+        // For Compat types, we have to "extract" the underlying types before
+        // performing validation.
+                n = getModularInstance(n);
+        const s = o.ha(e);
+        if (n instanceof Mh) 
+        // Add it to the field mask, but don't add anything to updateData.
+        a.push(e); else {
+            const t = Qh(n, s);
+            null != t && (a.push(e), h.set(e, t));
+        }
+    }
+    const l = new tn(a);
+    return new Dh(h, l, o.fieldTransforms);
 }
 
 /**
@@ -20649,7 +32756,7 @@ function Zh(t, e, n, s, i) {
     n && (u += " (via `toFirestore()`)"), u += ". ";
     let c = "";
     return (r || o) && (c += " (found", r && (c += ` in field ${s}`), o && (c += ` in document ${i}`), 
-    c += ")"), new L(B.INVALID_ARGUMENT, u + t + c);
+    c += ")"), new L$1(B.INVALID_ARGUMENT, u + t + c);
 }
 
 /** Checks `haystack` if FieldPath `needle` is present. Runs in O(n). */ function Xh(t, e) {
@@ -20786,7 +32893,7 @@ function Zh(t, e, n, s, i) {
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */ function sl(t) {
-    if ("L" /* LimitType.Last */ === t.limitType && 0 === t.explicitOrderBy.length) throw new L(B.UNIMPLEMENTED, "limitToLast() queries require specifying at least one orderBy() clause");
+    if ("L" /* LimitType.Last */ === t.limitType && 0 === t.explicitOrderBy.length) throw new L$1(B.UNIMPLEMENTED, "limitToLast() queries require specifying at least one orderBy() clause");
 }
 
 /**
@@ -20807,7 +32914,7 @@ function ol(t, e, ...n) {
     let s = [];
     e instanceof il && s.push(e), s = s.concat(n), function(t) {
         const e = t.filter((t => t instanceof al)).length, n = t.filter((t => t instanceof ul)).length;
-        if (e > 1 || e > 0 && n > 0) throw new L(B.INVALID_ARGUMENT, "InvalidQuery. When using composite filters, you cannot use more than one filter at the top level. Consider nesting the multiple filters within an `and(...)` statement. For example: change `query(query, where(...), or(...))` to `query(query, and(where(...), or(...)))`.");
+        if (e > 1 || e > 0 && n > 0) throw new L$1(B.INVALID_ARGUMENT, "InvalidQuery. When using composite filters, you cannot use more than one filter at the top level. Consider nesting the multiple filters within an `and(...)` statement. For example: change `query(query, where(...), or(...))` to `query(query, and(where(...), or(...)))`.");
     }
     /**
  * @license
@@ -20861,7 +32968,7 @@ function ol(t, e, ...n) {
         const e = kh(t.firestore), n = function(t, e, n, s, i, r, o) {
             let u;
             if (i.isKeyField()) {
-                if ("array-contains" /* Operator.ARRAY_CONTAINS */ === r || "array-contains-any" /* Operator.ARRAY_CONTAINS_ANY */ === r) throw new L(B.INVALID_ARGUMENT, `Invalid Query. You can't perform '${r}' queries on documentId().`);
+                if ("array-contains" /* Operator.ARRAY_CONTAINS */ === r || "array-contains-any" /* Operator.ARRAY_CONTAINS_ANY */ === r) throw new L$1(B.INVALID_ARGUMENT, `Invalid Query. You can't perform '${r}' queries on documentId().`);
                 if ("in" /* Operator.IN */ === r || "not-in" /* Operator.NOT_IN */ === r) {
                     bl(o, r);
                     const e = [];
@@ -20879,6 +32986,21 @@ function ol(t, e, ...n) {
         }(t._query, "where", e, t.firestore._databaseId, this._field, this._op, this._value);
         return n;
     }
+}
+
+/**
+ * Creates a {@link QueryFieldFilterConstraint} that enforces that documents
+ * must contain the specified field and that the value should satisfy the
+ * relation constraint provided.
+ *
+ * @param fieldPath - The path to compare
+ * @param opStr - The operation string (e.g "&lt;", "&lt;=", "==", "&lt;",
+ *   "&lt;=", "!=").
+ * @param value - The value for comparison
+ * @returns The created {@link QueryFieldFilterConstraint}.
+ */ function cl(t, e, n) {
+    const s = e, i = nl("where", t);
+    return ul._create(i, s, n);
 }
 
 /**
@@ -20925,6 +33047,36 @@ function ol(t, e, ...n) {
 }
 
 /**
+ * Creates a new {@link QueryCompositeFilterConstraint} that is a disjunction of
+ * the given filter constraints. A disjunction filter includes a document if it
+ * satisfies any of the given filters.
+ *
+ * @param queryConstraints - Optional. The list of
+ * {@link QueryFilterConstraint}s to perform a disjunction for. These must be
+ * created with calls to {@link where}, {@link or}, or {@link and}.
+ * @returns The newly created {@link QueryCompositeFilterConstraint}.
+ * @internal TODO remove this internal tag with OR Query support in the server
+ */ function hl(...t) {
+    // Only support QueryFilterConstraints
+    return t.forEach((t => Vl("or", t))), al._create("or" /* CompositeOperator.OR */ , t);
+}
+
+/**
+ * Creates a new {@link QueryCompositeFilterConstraint} that is a conjunction of
+ * the given filter constraints. A conjunction filter includes a document if it
+ * satisfies all of the given filters.
+ *
+ * @param queryConstraints - Optional. The list of
+ * {@link QueryFilterConstraint}s to perform a conjunction for. These must be
+ * created with calls to {@link where}, {@link or}, or {@link and}.
+ * @returns The newly created {@link QueryCompositeFilterConstraint}.
+ * @internal TODO remove this internal tag with OR Query support in the server
+ */ function ll(...t) {
+    // Only support QueryFilterConstraints
+    return t.forEach((t => Vl("and", t))), al._create("and" /* CompositeOperator.AND */ , t);
+}
+
+/**
  * A `QueryOrderByConstraint` is used to sort the set of documents returned by a
  * Firestore query. `QueryOrderByConstraint`s are created by invoking
  * {@link orderBy} and can then be passed to {@link query} to create a new query
@@ -20946,8 +33098,8 @@ function ol(t, e, ...n) {
     }
     _apply(t) {
         const e = function(t, e, n) {
-            if (null !== t.startAt) throw new L(B.INVALID_ARGUMENT, "Invalid query. You must not call startAt() or startAfter() before calling orderBy().");
-            if (null !== t.endAt) throw new L(B.INVALID_ARGUMENT, "Invalid query. You must not call endAt() or endBefore() before calling orderBy().");
+            if (null !== t.startAt) throw new L$1(B.INVALID_ARGUMENT, "Invalid query. You must not call startAt() or startAfter() before calling orderBy().");
+            if (null !== t.endAt) throw new L$1(B.INVALID_ARGUMENT, "Invalid query. You must not call endAt() or endBefore() before calling orderBy().");
             const s = new je(e, n);
             return function(t, e) {
                 if (null === gn(t)) {
@@ -20992,23 +33144,197 @@ function ol(t, e, ...n) {
     return fl._create(s, n);
 }
 
+/**
+ * A `QueryLimitConstraint` is used to limit the number of documents returned by
+ * a Firestore query.
+ * `QueryLimitConstraint`s are created by invoking {@link limit} or
+ * {@link limitToLast} and can then be passed to {@link query} to create a new
+ * query instance that also contains this `QueryLimitConstraint`.
+ */ class _l extends rl {
+    /**
+     * @internal
+     */
+    constructor(
+    /** The type of this query constraint */
+    t, e, n) {
+        super(), this.type = t, this._limit = e, this._limitType = n;
+    }
+    static _create(t, e, n) {
+        return new _l(t, e, n);
+    }
+    _apply(t) {
+        return new Wa(t.firestore, t.converter, An(t._query, this._limit, this._limitType));
+    }
+}
+
+/**
+ * Creates a {@link QueryLimitConstraint} that only returns the first matching
+ * documents.
+ *
+ * @param limit - The maximum number of items to return.
+ * @returns The created {@link QueryLimitConstraint}.
+ */ function wl(t) {
+    return Ka("limit", t), _l._create("limit", t, "F" /* LimitType.First */);
+}
+
+/**
+ * Creates a {@link QueryLimitConstraint} that only returns the last matching
+ * documents.
+ *
+ * You must specify at least one `orderBy` clause for `limitToLast` queries,
+ * otherwise an exception will be thrown during execution.
+ *
+ * @param limit - The maximum number of items to return.
+ * @returns The created {@link QueryLimitConstraint}.
+ */ function ml(t) {
+    return Ka("limitToLast", t), _l._create("limitToLast", t, "L" /* LimitType.Last */);
+}
+
+/**
+ * A `QueryStartAtConstraint` is used to exclude documents from the start of a
+ * result set returned by a Firestore query.
+ * `QueryStartAtConstraint`s are created by invoking {@link (startAt:1)} or
+ * {@link (startAfter:1)} and can then be passed to {@link query} to create a
+ * new query instance that also contains this `QueryStartAtConstraint`.
+ */ class gl extends rl {
+    /**
+     * @internal
+     */
+    constructor(
+    /** The type of this query constraint */
+    t, e, n) {
+        super(), this.type = t, this._docOrFields = e, this._inclusive = n;
+    }
+    static _create(t, e, n) {
+        return new gl(t, e, n);
+    }
+    _apply(t) {
+        const e = Al(t, this.type, this._docOrFields, this._inclusive);
+        return new Wa(t.firestore, t.converter, function(t, e) {
+            return new dn(t.path, t.collectionGroup, t.explicitOrderBy.slice(), t.filters.slice(), t.limit, t.limitType, e, t.endAt);
+        }(t._query, e));
+    }
+}
+
+function yl(...t) {
+    return gl._create("startAt", t, 
+    /*inclusive=*/ !0);
+}
+
+function pl(...t) {
+    return gl._create("startAfter", t, 
+    /*inclusive=*/ !1);
+}
+
+/**
+ * A `QueryEndAtConstraint` is used to exclude documents from the end of a
+ * result set returned by a Firestore query.
+ * `QueryEndAtConstraint`s are created by invoking {@link (endAt:1)} or
+ * {@link (endBefore:1)} and can then be passed to {@link query} to create a new
+ * query instance that also contains this `QueryEndAtConstraint`.
+ */ class Il extends rl {
+    /**
+     * @internal
+     */
+    constructor(
+    /** The type of this query constraint */
+    t, e, n) {
+        super(), this.type = t, this._docOrFields = e, this._inclusive = n;
+    }
+    static _create(t, e, n) {
+        return new Il(t, e, n);
+    }
+    _apply(t) {
+        const e = Al(t, this.type, this._docOrFields, this._inclusive);
+        return new Wa(t.firestore, t.converter, function(t, e) {
+            return new dn(t.path, t.collectionGroup, t.explicitOrderBy.slice(), t.filters.slice(), t.limit, t.limitType, t.startAt, e);
+        }(t._query, e));
+    }
+}
+
+function Tl(...t) {
+    return Il._create("endBefore", t, 
+    /*inclusive=*/ !1);
+}
+
+function El(...t) {
+    return Il._create("endAt", t, 
+    /*inclusive=*/ !0);
+}
+
+/** Helper function to create a bound from a document or fields */ function Al(t, e, n, s) {
+    if (n[0] = getModularInstance(n[0]), n[0] instanceof tl) return function(t, e, n, s, i) {
+        if (!s) throw new L$1(B.NOT_FOUND, `Can't use a DocumentSnapshot that doesn't exist for ${n}().`);
+        const r = [];
+        // Because people expect to continue/end a query at the exact document
+        // provided, we need to use the implicit sort order rather than the explicit
+        // sort order, because it's guaranteed to contain the document key. That way
+        // the position becomes unambiguous and the query continues/ends exactly at
+        // the provided document. Without the key (by using the explicit sort
+        // orders), multiple documents could match the position, yielding duplicate
+        // results.
+                for (const n of In(t)) if (n.field.isKeyField()) r.push(fe(e, s.key)); else {
+            const t = s.data.field(n.field);
+            if (te(t)) throw new L$1(B.INVALID_ARGUMENT, 'Invalid query. You are trying to start or end a query using a document for which the field "' + n.field + '" is an uncommitted server timestamp. (Since the value of this field is unknown, you cannot start/end a query with it.)');
+            if (null === t) {
+                const t = n.field.canonicalString();
+                throw new L$1(B.INVALID_ARGUMENT, `Invalid query. You are trying to start or end a query using a document for which the field '${t}' (used as the orderBy) does not exist.`);
+            }
+            r.push(t);
+        }
+        return new Re(r, i);
+    }
+    /**
+ * Converts a list of field values to a `Bound` for the given query.
+ */ (t._query, t.firestore._databaseId, e, n[0]._document, s);
+    {
+        const i = kh(t.firestore);
+        return function(t, e, n, s, i, r) {
+            // Use explicit order by's because it has to match the query the user made
+            const o = t.explicitOrderBy;
+            if (i.length > o.length) throw new L$1(B.INVALID_ARGUMENT, `Too many arguments provided to ${s}(). The number of arguments must be less than or equal to the number of orderBy() clauses`);
+            const u = [];
+            for (let r = 0; r < i.length; r++) {
+                const c = i[r];
+                if (o[r].field.isKeyField()) {
+                    if ("string" != typeof c) throw new L$1(B.INVALID_ARGUMENT, `Invalid query. Expected a string for document ID in ${s}(), but got a ${typeof c}`);
+                    if (!pn(t) && -1 !== c.indexOf("/")) throw new L$1(B.INVALID_ARGUMENT, `Invalid query. When querying a collection and ordering by documentId(), the value passed to ${s}() must be a plain document ID, but '${c}' contains a slash.`);
+                    const n = t.path.child(rt.fromString(c));
+                    if (!ct.isDocumentKey(n)) throw new L$1(B.INVALID_ARGUMENT, `Invalid query. When querying a collection group and ordering by documentId(), the value passed to ${s}() must result in a valid document path, but '${n}' is not because it contains an odd number of segments.`);
+                    const i = new ct(n);
+                    u.push(fe(e, i));
+                } else {
+                    const t = Gh(n, s, c);
+                    u.push(t);
+                }
+            }
+            return new Re(u, r);
+        }
+        /**
+ * Parses the given `documentIdValue` into a `ReferenceValue`, throwing
+ * appropriate errors if the value is anything other than a `DocumentReference`
+ * or `string`, or if the string is malformed.
+ */ (t._query, t.firestore._databaseId, i, e, n, s);
+    }
+}
+
 function Rl(t, e, n) {
     if ("string" == typeof (n = getModularInstance(n))) {
-        if ("" === n) throw new L(B.INVALID_ARGUMENT, "Invalid query. When querying with documentId(), you must provide a valid document ID, but it was an empty string.");
-        if (!pn(e) && -1 !== n.indexOf("/")) throw new L(B.INVALID_ARGUMENT, `Invalid query. When querying a collection by documentId(), you must provide a plain document ID, but '${n}' contains a '/' character.`);
+        if ("" === n) throw new L$1(B.INVALID_ARGUMENT, "Invalid query. When querying with documentId(), you must provide a valid document ID, but it was an empty string.");
+        if (!pn(e) && -1 !== n.indexOf("/")) throw new L$1(B.INVALID_ARGUMENT, `Invalid query. When querying a collection by documentId(), you must provide a plain document ID, but '${n}' contains a '/' character.`);
         const s = e.path.child(rt.fromString(n));
-        if (!ct.isDocumentKey(s)) throw new L(B.INVALID_ARGUMENT, `Invalid query. When querying a collection group by documentId(), the value provided must result in a valid document path, but '${s}' is not because it has an odd number of segments (${s.length}).`);
+        if (!ct.isDocumentKey(s)) throw new L$1(B.INVALID_ARGUMENT, `Invalid query. When querying a collection group by documentId(), the value provided must result in a valid document path, but '${s}' is not because it has an odd number of segments (${s.length}).`);
         return fe(t, new ct(s));
     }
     if (n instanceof za) return fe(t, n._key);
-    throw new L(B.INVALID_ARGUMENT, `Invalid query. When querying with documentId(), you must provide a valid string or a DocumentReference, but it was: ${qa(n)}.`);
+    throw new L$1(B.INVALID_ARGUMENT, `Invalid query. When querying with documentId(), you must provide a valid string or a DocumentReference, but it was: ${qa(n)}.`);
 }
 
 /**
  * Validates that the value passed into a disjunctive filter satisfies all
  * array requirements.
  */ function bl(t, e) {
-    if (!Array.isArray(t) || 0 === t.length) throw new L(B.INVALID_ARGUMENT, `Invalid Query. A non-empty array is required for '${e.toString()}' filters.`);
+    if (!Array.isArray(t) || 0 === t.length) throw new L$1(B.INVALID_ARGUMENT, `Invalid Query. A non-empty array is required for '${e.toString()}' filters.`);
 }
 
 /**
@@ -21023,7 +33349,7 @@ function Rl(t, e, n) {
  */ function vl(t, e) {
     if (e.isInequality()) {
         const n = yn(t), s = e.field;
-        if (null !== n && !n.isEqual(s)) throw new L(B.INVALID_ARGUMENT, `Invalid query. All where filters with an inequality (<, <=, !=, not-in, >, or >=) must be on the same field. But you have inequality filters on '${n.toString()}' and '${s.toString()}'`);
+        if (null !== n && !n.isEqual(s)) throw new L$1(B.INVALID_ARGUMENT, `Invalid query. All where filters with an inequality (<, <=, !=, not-in, >, or >=) must be on the same field. But you have inequality filters on '${n.toString()}' and '${s.toString()}'`);
         const i = gn(t);
         null !== i && Pl(t, s, i);
     }
@@ -21048,11 +33374,15 @@ function Rl(t, e, n) {
     }(e.op));
     if (null !== n) 
     // Special case when it's a duplicate op to give a slightly clearer error message.
-    throw n === e.op ? new L(B.INVALID_ARGUMENT, `Invalid query. You cannot use more than one '${e.op.toString()}' filter.`) : new L(B.INVALID_ARGUMENT, `Invalid query. You cannot use '${e.op.toString()}' filters with '${n.toString()}' filters.`);
+    throw n === e.op ? new L$1(B.INVALID_ARGUMENT, `Invalid query. You cannot use more than one '${e.op.toString()}' filter.`) : new L$1(B.INVALID_ARGUMENT, `Invalid query. You cannot use '${e.op.toString()}' filters with '${n.toString()}' filters.`);
 }
 
 function Pl(t, e, n) {
-    if (!n.isEqual(e)) throw new L(B.INVALID_ARGUMENT, `Invalid query. You have a where filter with an inequality (<, <=, !=, not-in, >, or >=) on field '${e.toString()}' and so you must also use '${e.toString()}' as your first argument to orderBy(), but your first orderBy() is on field '${n.toString()}' instead.`);
+    if (!n.isEqual(e)) throw new L$1(B.INVALID_ARGUMENT, `Invalid query. You have a where filter with an inequality (<, <=, !=, not-in, >, or >=) on field '${e.toString()}' and so you must also use '${e.toString()}' as your first argument to orderBy(), but your first orderBy() is on field '${n.toString()}' instead.`);
+}
+
+function Vl(t, e) {
+    if (!(e instanceof ul || e instanceof al)) throw new L$1(B.INVALID_ARGUMENT, `Function ${t}() requires AppliableConstraints created with a call to 'where(...)', 'or(...)', or 'and(...)'.`);
 }
 
 class Sl {
@@ -21166,6 +33496,87 @@ class Sl {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return s = t ? n && (n.merge || n.mergeFields) ? t.toFirestore(e, n) : t.toFirestore(e) : e, 
     s;
+}
+
+class Cl extends Sl {
+    constructor(t) {
+        super(), this.firestore = t;
+    }
+    convertBytes(t) {
+        return new Ah(t);
+    }
+    convertReference(t) {
+        const e = this.convertDocumentKey(t, this.firestore._databaseId);
+        return new za(this.firestore, /* converter= */ null, e);
+    }
+}
+
+/**
+ * @license
+ * Copyright 2022 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Create an AggregateField object that can be used to compute the sum of
+ * a specified field over a range of documents in the result set of a query.
+ * @param field Specifies the field to sum across the result set.
+ * @internal TODO (sum/avg) remove when public
+ */ function xl(t) {
+    return new Th("sum", Hh("sum", t));
+}
+
+/**
+ * Create an AggregateField object that can be used to compute the average of
+ * a specified field over a range of documents in the result set of a query.
+ * @param field Specifies the field to average across the result set.
+ * @internal TODO (sum/avg) remove when public
+ */ function Nl(t) {
+    return new Th("avg", Hh("average", t));
+}
+
+/**
+ * Create an AggregateField object that can be used to compute the count of
+ * documents in the result set of a query.
+ * @internal TODO (sum/avg) remove when public
+ */ function kl() {
+    return new Th("count");
+}
+
+/**
+ * Compares two 'AggregateField` instances for equality.
+ *
+ * @param left Compare this AggregateField to the `right`.
+ * @param right Compare this AggregateField to the `left`.
+ * @internal TODO (sum/avg) remove when public
+ */ function Ol(t, e) {
+    var n, s;
+    return t instanceof Th && e instanceof Th && t._aggregateType === e._aggregateType && (null === (n = t._internalFieldPath) || void 0 === n ? void 0 : n.canonicalString()) === (null === (s = e._internalFieldPath) || void 0 === s ? void 0 : s.canonicalString());
+}
+
+/**
+ * Compares two `AggregateQuerySnapshot` instances for equality.
+ *
+ * Two `AggregateQuerySnapshot` instances are considered "equal" if they have
+ * underlying queries that compare equal, and the same data.
+ *
+ * @param left - The first `AggregateQuerySnapshot` to compare.
+ * @param right - The second `AggregateQuerySnapshot` to compare.
+ *
+ * @returns `true` if the objects are "equal", as defined above, or `false`
+ * otherwise.
+ */ function Ml(t, e) {
+    return th(t.query, e.query) && deepEqual(t.data(), e.data());
 }
 
 /**
@@ -21342,7 +33753,7 @@ class Sl {
      * snapshot events.
      */    docChanges(t = {}) {
         const e = !!t.includeMetadataChanges;
-        if (e && this._snapshot.excludesMetadataChanges) throw new L(B.INVALID_ARGUMENT, "To include metadata changes with your document changes, you must also pass { includeMetadataChanges:true } to onSnapshot().");
+        if (e && this._snapshot.excludesMetadataChanges) throw new L$1(B.INVALID_ARGUMENT, "To include metadata changes with your document changes, you must also pass { includeMetadataChanges:true } to onSnapshot().");
         return this._cachedChanges && this._cachedChangesIncludeMetadataChanges === e || (this._cachedChanges = 
         /** Calculates the array of `DocumentChange`s for a given `ViewSnapshot`. */
         function(t, e) {
@@ -21396,6 +33807,51 @@ function ql(t) {
     }
 }
 
+// TODO(firestoreexp): Add tests for snapshotEqual with different snapshot
+// metadata
+/**
+ * Returns true if the provided snapshots are equal.
+ *
+ * @param left - A snapshot to compare.
+ * @param right - A snapshot to compare.
+ * @returns true if the snapshots are equal.
+ */ function Ul(t, e) {
+    return t instanceof $l && e instanceof $l ? t._firestore === e._firestore && t._key.isEqual(e._key) && (null === t._document ? null === e._document : t._document.isEqual(e._document)) && t._converter === e._converter : t instanceof Ll && e instanceof Ll && (t._firestore === e._firestore && th(t.query, e.query) && t.metadata.isEqual(e.metadata) && t._snapshot.isEqual(e._snapshot));
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Reads the document referred to by this `DocumentReference`.
+ *
+ * Note: `getDoc()` attempts to provide up-to-date data when possible by waiting
+ * for data from the server, but it may return cached data or fail if you are
+ * offline and the server cannot be reached. To specify this behavior, invoke
+ * {@link getDocFromCache} or {@link getDocFromServer}.
+ *
+ * @param reference - The reference of the document to fetch.
+ * @returns A Promise resolved with a `DocumentSnapshot` containing the
+ * current document contents.
+ */ function Kl(t) {
+    t = Ua(t, za);
+    const e = Ua(t.firestore, rh);
+    return Da(ch(e), t._key).then((n => sf(e, t, n)));
+}
+
 class Gl extends Sl {
     constructor(t) {
         super(), this.firestore = t;
@@ -21407,6 +33863,33 @@ class Gl extends Sl {
         const e = this.convertDocumentKey(t, this.firestore._databaseId);
         return new za(this.firestore, /* converter= */ null, e);
     }
+}
+
+/**
+ * Reads the document referred to by this `DocumentReference` from cache.
+ * Returns an error if the document is not currently cached.
+ *
+ * @returns A `Promise` resolved with a `DocumentSnapshot` containing the
+ * current document contents.
+ */ function Ql(t) {
+    t = Ua(t, za);
+    const e = Ua(t.firestore, rh), n = ch(e), s = new Gl(e);
+    return Sa(n, t._key).then((n => new $l(e, s, t._key, n, new Fl(null !== n && n.hasLocalMutations, 
+    /* fromCache= */ !0), t.converter)));
+}
+
+/**
+ * Reads the document referred to by this `DocumentReference` from the server.
+ * Returns an error if the network is not available.
+ *
+ * @returns A `Promise` resolved with a `DocumentSnapshot` containing the
+ * current document contents.
+ */ function jl(t) {
+    t = Ua(t, za);
+    const e = Ua(t.firestore, rh);
+    return Da(ch(e), t._key, {
+        source: "server"
+    }).then((n => sf(e, t, n)));
 }
 
 /**
@@ -21422,6 +33905,58 @@ class Gl extends Sl {
     t = Ua(t, Wa);
     const e = Ua(t.firestore, rh), n = ch(e), s = new Gl(e);
     return sl(t._query), xa(n, t._query).then((n => new Ll(e, s, t, n)));
+}
+
+/**
+ * Executes the query and returns the results as a `QuerySnapshot` from cache.
+ * Returns an empty result set if no documents matching the query are currently
+ * cached.
+ *
+ * @returns A `Promise` that will be resolved with the results of the query.
+ */ function Wl(t) {
+    t = Ua(t, Wa);
+    const e = Ua(t.firestore, rh), n = ch(e), s = new Gl(e);
+    return Ca(n, t._query).then((n => new Ll(e, s, t, n)));
+}
+
+/**
+ * Executes the query and returns the results as a `QuerySnapshot` from the
+ * server. Returns an error if the network is not available.
+ *
+ * @returns A `Promise` that will be resolved with the results of the query.
+ */ function Hl(t) {
+    t = Ua(t, Wa);
+    const e = Ua(t.firestore, rh), n = ch(e), s = new Gl(e);
+    return xa(n, t._query, {
+        source: "server"
+    }).then((n => new Ll(e, s, t, n)));
+}
+
+function Jl(t, e, n) {
+    t = Ua(t, za);
+    const s = Ua(t.firestore, rh), i = Dl(t.converter, e, n);
+    return nf(s, [ Oh(kh(s), "setDoc", t._key, i, null !== t.converter, n).toMutation(t._key, Hn.none()) ]);
+}
+
+function Yl(t, e, n, ...s) {
+    t = Ua(t, za);
+    const i = Ua(t.firestore, rh), r = kh(i);
+    let o;
+    o = "string" == typeof (
+    // For Compat types, we have to "extract" the underlying types before
+    // performing validation.
+    e = getModularInstance(e)) || e instanceof Rh ? Kh(r, "updateDoc", t._key, e, n, s) : Uh(r, "updateDoc", t._key, e);
+    return nf(i, [ o.toMutation(t._key, Hn.exists(!0)) ]);
+}
+
+/**
+ * Deletes the document referred to by the specified `DocumentReference`.
+ *
+ * @param reference - A reference to the document to delete.
+ * @returns A Promise resolved once the document has been successfully
+ * deleted from the backend (note that it won't resolve while you're offline).
+ */ function Zl(t) {
+    return nf(Ua(t.firestore, rh), [ new cs(t._key, Hn.none()) ]);
 }
 
 /**
@@ -21480,6 +34015,12 @@ function tf(t, ...e) {
     }(ch(a), h, u, c);
 }
 
+function ef(t, e) {
+    return Na(ch(t = Ua(t, rh)), nh(e) ? e : {
+        next: e
+    });
+}
+
 /**
  * Locally writes `mutations` on the async queue.
  * @internal
@@ -21499,6 +34040,563 @@ function tf(t, ...e) {
 }
 
 /**
+ * @license
+ * Copyright 2022 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Calculates the number of documents in the result set of the given query,
+ * without actually downloading the documents.
+ *
+ * Using this function to count the documents is efficient because only the
+ * final count, not the documents' data, is downloaded. This function can even
+ * count the documents if the result set would be prohibitively large to
+ * download entirely (e.g. thousands of documents).
+ *
+ * The result received from the server is presented, unaltered, without
+ * considering any local state. That is, documents in the local cache are not
+ * taken into consideration, neither are local modifications not yet
+ * synchronized with the server. Previously-downloaded results, if any, are not
+ * used: every request using this source necessarily involves a round trip to
+ * the server.
+ *
+ * @param query - The query whose result set size to calculate.
+ * @returns A Promise that will be resolved with the count; the count can be
+ * retrieved from `snapshot.data().count`, where `snapshot` is the
+ * `AggregateQuerySnapshot` to which the returned Promise resolves.
+ */ function rf(t) {
+    return of(t, {
+        count: kl()
+    });
+}
+
+/**
+ * Calculates the specified aggregations over the documents in the result
+ * set of the given query, without actually downloading the documents.
+ *
+ * Using this function to perform aggregations is efficient because only the
+ * final aggregation values, not the documents' data, is downloaded. This
+ * function can even perform aggregations of the documents if the result set
+ * would be prohibitively large to download entirely (e.g. thousands of documents).
+ *
+ * The result received from the server is presented, unaltered, without
+ * considering any local state. That is, documents in the local cache are not
+ * taken into consideration, neither are local modifications not yet
+ * synchronized with the server. Previously-downloaded results, if any, are not
+ * used: every request using this source necessarily involves a round trip to
+ * the server.
+ *
+ * @param query The query whose result set to aggregate over.
+ * @param aggregateSpec An `AggregateSpec` object that specifies the aggregates
+ * to perform over the result set. The AggregateSpec specifies aliases for each
+ * aggregate, which can be used to retrieve the aggregate result.
+ * @example
+ * ```typescript
+ * const aggregateSnapshot = await getAggregateFromServer(query, {
+ *   countOfDocs: count(),
+ *   totalHours: sum('hours'),
+ *   averageScore: average('score')
+ * });
+ *
+ * const countOfDocs: number = aggregateSnapshot.data().countOfDocs;
+ * const totalHours: number = aggregateSnapshot.data().totalHours;
+ * const averageScore: number | null = aggregateSnapshot.data().averageScore;
+ * ```
+ * @internal TODO (sum/avg) remove when public
+ */ function of(t, e) {
+    const n = Ua(t.firestore, rh), s = ch(n), i = function(t, e) {
+        const n = [];
+        for (const s in t) Object.prototype.hasOwnProperty.call(t, s) && n.push(e(t[s], s, t));
+        return n;
+    }(e, ((t, e) => new $t(new Ft(e), t._aggregateType, t._internalFieldPath)));
+    // Run the aggregation and convert the results
+    return function(t, e, n) {
+        const s = new q;
+        return t.asyncQueue.enqueueAndForget((async () => {
+            // TODO (sum/avg) should we update this to use the event manager?
+            // Implement and call executeAggregateQueryViaSnapshotListener, similar
+            // to the implementation in firestoreClientGetDocumentsViaSnapshotListener
+            // above
+            try {
+                if (Lu(await Aa(t))) {
+                    const i = await ba(t);
+                    s.resolve(Su(i, e, n));
+                } else s.reject(new L$1(B.UNAVAILABLE, "Failed to get aggregate result because the client is offline."));
+            } catch (t) {
+                s.reject(t);
+            }
+        })), s.promise;
+    }(s, t._query, i).then((e => 
+    /**
+ * Converts the core aggregration result to an `AggregateQuerySnapshot`
+ * that can be returned to the consumer.
+ * @param query
+ * @param aggregateResult Core aggregation result
+ * @internal
+ */
+    function(t, e, n) {
+        const s = new Gl(t);
+        return new Eh(e, s, n);
+    }
+    /**
+ * @license
+ * Copyright 2022 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */ (n, t, e)));
+}
+
+const uf = {
+    maxAttempts: 5
+};
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * A write batch, used to perform multiple writes as a single atomic unit.
+ *
+ * A `WriteBatch` object can be acquired by calling {@link writeBatch}. It
+ * provides methods for adding writes to the write batch. None of the writes
+ * will be committed (or visible locally) until {@link WriteBatch.commit} is
+ * called.
+ */
+class cf {
+    /** @hideconstructor */
+    constructor(t, e) {
+        this._firestore = t, this._commitHandler = e, this._mutations = [], this._committed = !1, 
+        this._dataReader = kh(t);
+    }
+    set(t, e, n) {
+        this._verifyNotCommitted();
+        const s = af(t, this._firestore), i = Dl(s.converter, e, n), r = Oh(this._dataReader, "WriteBatch.set", s._key, i, null !== s.converter, n);
+        return this._mutations.push(r.toMutation(s._key, Hn.none())), this;
+    }
+    update(t, e, n, ...s) {
+        this._verifyNotCommitted();
+        const i = af(t, this._firestore);
+        // For Compat types, we have to "extract" the underlying types before
+        // performing validation.
+                let r;
+        return r = "string" == typeof (e = getModularInstance(e)) || e instanceof Rh ? Kh(this._dataReader, "WriteBatch.update", i._key, e, n, s) : Uh(this._dataReader, "WriteBatch.update", i._key, e), 
+        this._mutations.push(r.toMutation(i._key, Hn.exists(!0))), this;
+    }
+    /**
+     * Deletes the document referred to by the provided {@link DocumentReference}.
+     *
+     * @param documentRef - A reference to the document to be deleted.
+     * @returns This `WriteBatch` instance. Used for chaining method calls.
+     */    delete(t) {
+        this._verifyNotCommitted();
+        const e = af(t, this._firestore);
+        return this._mutations = this._mutations.concat(new cs(e._key, Hn.none())), this;
+    }
+    /**
+     * Commits all of the writes in this write batch as a single atomic unit.
+     *
+     * The result of these writes will only be reflected in document reads that
+     * occur after the returned promise resolves. If the client is offline, the
+     * write fails. If you would like to see local modifications or buffer writes
+     * until the client is online, use the full Firestore SDK.
+     *
+     * @returns A `Promise` resolved once all of the writes in the batch have been
+     * successfully written to the backend as an atomic unit (note that it won't
+     * resolve while you're offline).
+     */    commit() {
+        return this._verifyNotCommitted(), this._committed = !0, this._mutations.length > 0 ? this._commitHandler(this._mutations) : Promise.resolve();
+    }
+    _verifyNotCommitted() {
+        if (this._committed) throw new L$1(B.FAILED_PRECONDITION, "A write batch can no longer be used after commit() has been called.");
+    }
+}
+
+function af(t, e) {
+    if ((t = getModularInstance(t)).firestore !== e) throw new L$1(B.INVALID_ARGUMENT, "Provided document reference is from a different Firestore instance.");
+    return t;
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+// TODO(mrschmidt) Consider using `BaseTransaction` as the base class in the
+// legacy SDK.
+/**
+ * A reference to a transaction.
+ *
+ * The `Transaction` object passed to a transaction's `updateFunction` provides
+ * the methods to read and write data within the transaction context. See
+ * {@link runTransaction}.
+ */
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * A reference to a transaction.
+ *
+ * The `Transaction` object passed to a transaction's `updateFunction` provides
+ * the methods to read and write data within the transaction context. See
+ * {@link runTransaction}.
+ */
+class hf extends class {
+    /** @hideconstructor */
+    constructor(t, e) {
+        this._firestore = t, this._transaction = e, this._dataReader = kh(t);
+    }
+    /**
+     * Reads the document referenced by the provided {@link DocumentReference}.
+     *
+     * @param documentRef - A reference to the document to be read.
+     * @returns A `DocumentSnapshot` with the read data.
+     */    get(t) {
+        const e = af(t, this._firestore), n = new Cl(this._firestore);
+        return this._transaction.lookup([ e._key ]).then((t => {
+            if (!t || 1 !== t.length) return O();
+            const s = t[0];
+            if (s.isFoundDocument()) return new tl(this._firestore, n, s.key, s, e.converter);
+            if (s.isNoDocument()) return new tl(this._firestore, n, e._key, null, e.converter);
+            throw O();
+        }));
+    }
+    set(t, e, n) {
+        const s = af(t, this._firestore), i = Dl(s.converter, e, n), r = Oh(this._dataReader, "Transaction.set", s._key, i, null !== s.converter, n);
+        return this._transaction.set(s._key, r), this;
+    }
+    update(t, e, n, ...s) {
+        const i = af(t, this._firestore);
+        // For Compat types, we have to "extract" the underlying types before
+        // performing validation.
+                let r;
+        return r = "string" == typeof (e = getModularInstance(e)) || e instanceof Rh ? Kh(this._dataReader, "Transaction.update", i._key, e, n, s) : Uh(this._dataReader, "Transaction.update", i._key, e), 
+        this._transaction.update(i._key, r), this;
+    }
+    /**
+     * Deletes the document referred to by the provided {@link DocumentReference}.
+     *
+     * @param documentRef - A reference to the document to be deleted.
+     * @returns This `Transaction` instance. Used for chaining method calls.
+     */    delete(t) {
+        const e = af(t, this._firestore);
+        return this._transaction.delete(e._key), this;
+    }
+} {
+    // This class implements the same logic as the Transaction API in the Lite SDK
+    // but is subclassed in order to return its own DocumentSnapshot types.
+    /** @hideconstructor */
+    constructor(t, e) {
+        super(t, e), this._firestore = t;
+    }
+    /**
+     * Reads the document referenced by the provided {@link DocumentReference}.
+     *
+     * @param documentRef - A reference to the document to be read.
+     * @returns A `DocumentSnapshot` with the read data.
+     */    get(t) {
+        const e = af(t, this._firestore), n = new Gl(this._firestore);
+        return super.get(t).then((t => new $l(this._firestore, n, e._key, t._document, new Fl(
+        /* hasPendingWrites= */ !1, 
+        /* fromCache= */ !1), e.converter)));
+    }
+}
+
+/**
+ * Executes the given `updateFunction` and then attempts to commit the changes
+ * applied within the transaction. If any document read within the transaction
+ * has changed, Cloud Firestore retries the `updateFunction`. If it fails to
+ * commit after 5 attempts, the transaction fails.
+ *
+ * The maximum number of writes allowed in a single transaction is 500.
+ *
+ * @param firestore - A reference to the Firestore database to run this
+ * transaction against.
+ * @param updateFunction - The function to execute within the transaction
+ * context.
+ * @param options - An options object to configure maximum number of attempts to
+ * commit.
+ * @returns If the transaction completed successfully or was explicitly aborted
+ * (the `updateFunction` returned a failed promise), the promise returned by the
+ * `updateFunction `is returned here. Otherwise, if the transaction failed, a
+ * rejected promise with the corresponding failure error is returned.
+ */ function lf(t, e, n) {
+    t = Ua(t, rh);
+    const s = Object.assign(Object.assign({}, uf), n);
+    !function(t) {
+        if (t.maxAttempts < 1) throw new L$1(B.INVALID_ARGUMENT, "Max attempts must be at least 1");
+    }(s);
+    return function(t, e, n) {
+        const s = new q;
+        return t.asyncQueue.enqueueAndForget((async () => {
+            const i = await ba(t);
+            new wa(t.asyncQueue, i, n, e, s).run();
+        })), s.promise;
+    }(ch(t), (n => e(new hf(t, n))), s);
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Returns a sentinel for use with {@link @firebase/firestore/lite#(updateDoc:1)} or
+ * {@link @firebase/firestore/lite#(setDoc:1)} with `{merge: true}` to mark a field for deletion.
+ */ function ff() {
+    return new Mh("deleteField");
+}
+
+/**
+ * Returns a sentinel used with {@link @firebase/firestore/lite#(setDoc:1)} or {@link @firebase/firestore/lite#(updateDoc:1)} to
+ * include a server-generated timestamp in the written data.
+ */ function df() {
+    return new $h("serverTimestamp");
+}
+
+/**
+ * Returns a special value that can be used with {@link @firebase/firestore/lite#(setDoc:1)} or {@link
+ * @firebase/firestore/lite#(updateDoc:1)} that tells the server to union the given elements with any array
+ * value that already exists on the server. Each specified element that doesn't
+ * already exist in the array will be added to the end. If the field being
+ * modified is not already an array it will be overwritten with an array
+ * containing exactly the specified elements.
+ *
+ * @param elements - The elements to union into the array.
+ * @returns The `FieldValue` sentinel for use in a call to `setDoc()` or
+ * `updateDoc()`.
+ */ function _f(...t) {
+    // NOTE: We don't actually parse the data until it's used in set() or
+    // update() since we'd need the Firestore instance to do this.
+    return new Bh("arrayUnion", t);
+}
+
+/**
+ * Returns a special value that can be used with {@link (setDoc:1)} or {@link
+ * updateDoc:1} that tells the server to remove the given elements from any
+ * array value that already exists on the server. All instances of each element
+ * specified will be removed from the array. If the field being modified is not
+ * already an array it will be overwritten with an empty array.
+ *
+ * @param elements - The elements to remove from the array.
+ * @returns The `FieldValue` sentinel for use in a call to `setDoc()` or
+ * `updateDoc()`
+ */ function wf(...t) {
+    // NOTE: We don't actually parse the data until it's used in set() or
+    // update() since we'd need the Firestore instance to do this.
+    return new Lh("arrayRemove", t);
+}
+
+/**
+ * Returns a special value that can be used with {@link @firebase/firestore/lite#(setDoc:1)} or {@link
+ * @firebase/firestore/lite#(updateDoc:1)} that tells the server to increment the field's current value by
+ * the given value.
+ *
+ * If either the operand or the current field value uses floating point
+ * precision, all arithmetic follows IEEE 754 semantics. If both values are
+ * integers, values outside of JavaScript's safe number range
+ * (`Number.MIN_SAFE_INTEGER` to `Number.MAX_SAFE_INTEGER`) are also subject to
+ * precision loss. Furthermore, once processed by the Firestore backend, all
+ * integer operations are capped between -2^63 and 2^63-1.
+ *
+ * If the current field value is not of type `number`, or if the field does not
+ * yet exist, the transformation sets the field to the given value.
+ *
+ * @param n - The value to increment by.
+ * @returns The `FieldValue` sentinel for use in a call to `setDoc()` or
+ * `updateDoc()`
+ */ function mf(t) {
+    return new qh("increment", t);
+}
+
+/**
+ * @license
+ * Copyright 2020 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/**
+ * Creates a write batch, used for performing multiple writes as a single
+ * atomic operation. The maximum number of writes allowed in a single {@link WriteBatch}
+ * is 500.
+ *
+ * Unlike transactions, write batches are persisted offline and therefore are
+ * preferable when you don't need to condition your writes on read data.
+ *
+ * @returns A {@link WriteBatch} that can be used to atomically execute multiple
+ * writes.
+ */ function gf(t) {
+    return ch(t = Ua(t, rh)), new cf(t, (e => nf(t, e)));
+}
+
+/**
+ * @license
+ * Copyright 2021 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */ function yf(t, e) {
+    var n;
+    const s = ch(t = Ua(t, rh));
+    // PORTING NOTE: We don't return an error if the user has not enabled
+    // persistence since `enableIndexeddbPersistence()` can fail on the Web.
+        if (!(null === (n = s.offlineComponents) || void 0 === n ? void 0 : n.indexBackfillerScheduler)) return N$1("Cannot enable indexes when persistence is disabled"), 
+    Promise.resolve();
+    const i = function(t) {
+        const e = "string" == typeof t ? function(t) {
+            try {
+                return JSON.parse(t);
+            } catch (t) {
+                throw new L$1(B.INVALID_ARGUMENT, "Failed to parse JSON: " + (null == t ? void 0 : t.message));
+            }
+        }(t) : t, n = [];
+        if (Array.isArray(e.indexes)) for (const t of e.indexes) {
+            const e = pf(t, "collectionGroup"), s = [];
+            if (Array.isArray(t.fields)) for (const e of t.fields) {
+                const t = Yh("setIndexConfiguration", pf(e, "fieldPath"));
+                "CONTAINS" === e.arrayConfig ? s.push(new dt(t, 2 /* IndexKind.CONTAINS */)) : "ASCENDING" === e.order ? s.push(new dt(t, 0 /* IndexKind.ASCENDING */)) : "DESCENDING" === e.order && s.push(new dt(t, 1 /* IndexKind.DESCENDING */));
+            }
+            n.push(new at(at.UNKNOWN_ID, e, s, wt.empty()));
+        }
+        return n;
+    }(e);
+    return Ea(s).then((t => async function(t, e) {
+        const n = $$1(t), s = n.indexManager, i = [];
+        return n.persistence.runTransaction("Configure indexes", "readwrite", (t => s.getFieldIndexes(t).next((n => function(t, e, n, s, i) {
+            t = [ ...t ], e = [ ...e ], t.sort(n), e.sort(n);
+            const r = t.length, o = e.length;
+            let u = 0, c = 0;
+            for (;u < o && c < r; ) {
+                const r = n(t[c], e[u]);
+                r < 0 ? 
+                // The element was removed if the next element in our ordered
+                // walkthrough is only in `before`.
+                i(t[c++]) : r > 0 ? 
+                // The element was added if the next element in our ordered walkthrough
+                // is only in `after`.
+                s(e[u++]) : (u++, c++);
+            }
+            for (;u < o; ) s(e[u++]);
+            for (;c < r; ) i(t[c++]);
+        }(n, e, ft, (e => {
+            i.push(s.addFieldIndex(t, e));
+        }), (e => {
+            i.push(s.deleteFieldIndex(t, e));
+        })))).next((() => At.waitFor(i)))));
+    }
+    /**
+ * @license
+ * Copyright 2019 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+    // The format of the LocalStorage key that stores the client state is:
+    //     firestore_clients_<persistence_prefix>_<instance_key>
+    (t, i)));
+}
+
+function pf(t, e) {
+    if ("string" != typeof t[e]) throw new L$1(B.INVALID_ARGUMENT, "Missing string value for: " + e);
+    return t[e];
+}
+
+/**
  * Cloud Firestore
  *
  * @packageDocumentation
@@ -21507,7 +34605,7 @@ function tf(t, ...e) {
         P$1 = t;
     }(SDK_VERSION), _registerComponent(new Component("firestore", ((t, {instanceIdentifier: n, options: s}) => {
         const i = t.getProvider("app").getImmediate(), r = new rh(new Q(t.getProvider("auth-internal")), new H$1(t.getProvider("app-check-internal")), function(t, e) {
-            if (!Object.prototype.hasOwnProperty.apply(t.options, [ "projectId" ])) throw new L(B.INVALID_ARGUMENT, '"projectId" not provided in firebase.initializeApp.');
+            if (!Object.prototype.hasOwnProperty.apply(t.options, [ "projectId" ])) throw new L$1(B.INVALID_ARGUMENT, '"projectId" not provided in firebase.initializeApp.');
             return new Lt(t.options.projectId, e);
         }(i, n), i);
         return s = Object.assign({
@@ -21523,7 +34621,7 @@ function tf(t, ...e) {
  * Copyright 2017 Google LLC
  * SPDX-License-Identifier: BSD-3-Clause
  */
-var t;const i=window,s=i.trustedTypes,e=s?s.createPolicy("lit-html",{createHTML:t=>t}):void 0,o=`lit$${(Math.random()+"").slice(9)}$`,n="?"+o,l=`<${n}>`,h=document,r=(t="")=>h.createComment(t),d=t=>null===t||"object"!=typeof t&&"function"!=typeof t,u=Array.isArray,c=t=>u(t)||"function"==typeof(null==t?void 0:t[Symbol.iterator]),v=/<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g,a=/-->/g,f=/>/g,_=RegExp(">|[ \t\n\f\r](?:([^\\s\"'>=/]+)([ \t\n\f\r]*=[ \t\n\f\r]*(?:[^ \t\n\f\r\"'`<>=]|(\"|')|))|$)","g"),m=/'/g,p=/"/g,$=/^(?:script|style|textarea|title)$/i,g=t=>(i,...s)=>({_$litType$:t,strings:i,values:s}),y=g(1),x=Symbol.for("lit-noChange"),b=Symbol.for("lit-nothing"),T=new WeakMap,A=h.createTreeWalker(h,129,null,!1),E=(t,i)=>{const s=t.length-1,n=[];let h,r=2===i?"<svg>":"",d=v;for(let i=0;i<s;i++){const s=t[i];let e,u,c=-1,g=0;for(;g<s.length&&(d.lastIndex=g,u=d.exec(s),null!==u);)g=d.lastIndex,d===v?"!--"===u[1]?d=a:void 0!==u[1]?d=f:void 0!==u[2]?($.test(u[2])&&(h=RegExp("</"+u[2],"g")),d=_):void 0!==u[3]&&(d=_):d===_?">"===u[0]?(d=null!=h?h:v,c=-1):void 0===u[1]?c=-2:(c=d.lastIndex-u[2].length,e=u[1],d=void 0===u[3]?_:'"'===u[3]?p:m):d===p||d===m?d=_:d===a||d===f?d=v:(d=_,h=void 0);const y=d===_&&t[i+1].startsWith("/>")?" ":"";r+=d===v?s+l:c>=0?(n.push(e),s.slice(0,c)+"$lit$"+s.slice(c)+o+y):s+o+(-2===c?(n.push(void 0),i):y);}const u=r+(t[s]||"<?>")+(2===i?"</svg>":"");if(!Array.isArray(t)||!t.hasOwnProperty("raw"))throw Error("invalid template strings array");return [void 0!==e?e.createHTML(u):u,n]};class C{constructor({strings:t,_$litType$:i},e){let l;this.parts=[];let h=0,d=0;const u=t.length-1,c=this.parts,[v,a]=E(t,i);if(this.el=C.createElement(v,e),A.currentNode=this.el.content,2===i){const t=this.el.content,i=t.firstChild;i.remove(),t.append(...i.childNodes);}for(;null!==(l=A.nextNode())&&c.length<u;){if(1===l.nodeType){if(l.hasAttributes()){const t=[];for(const i of l.getAttributeNames())if(i.endsWith("$lit$")||i.startsWith(o)){const s=a[d++];if(t.push(i),void 0!==s){const t=l.getAttribute(s.toLowerCase()+"$lit$").split(o),i=/([.?@])?(.*)/.exec(s);c.push({type:1,index:h,name:i[2],strings:t,ctor:"."===i[1]?M:"?"===i[1]?k:"@"===i[1]?H:S});}else c.push({type:6,index:h});}for(const i of t)l.removeAttribute(i);}if($.test(l.tagName)){const t=l.textContent.split(o),i=t.length-1;if(i>0){l.textContent=s?s.emptyScript:"";for(let s=0;s<i;s++)l.append(t[s],r()),A.nextNode(),c.push({type:2,index:++h});l.append(t[i],r());}}}else if(8===l.nodeType)if(l.data===n)c.push({type:2,index:h});else {let t=-1;for(;-1!==(t=l.data.indexOf(o,t+1));)c.push({type:7,index:h}),t+=o.length-1;}h++;}}static createElement(t,i){const s=h.createElement("template");return s.innerHTML=t,s}}function P(t,i,s=t,e){var o,n,l,h;if(i===x)return i;let r=void 0!==e?null===(o=s._$Co)||void 0===o?void 0:o[e]:s._$Cl;const u=d(i)?void 0:i._$litDirective$;return (null==r?void 0:r.constructor)!==u&&(null===(n=null==r?void 0:r._$AO)||void 0===n||n.call(r,!1),void 0===u?r=void 0:(r=new u(t),r._$AT(t,s,e)),void 0!==e?(null!==(l=(h=s)._$Co)&&void 0!==l?l:h._$Co=[])[e]=r:s._$Cl=r),void 0!==r&&(i=P(t,r._$AS(t,i.values),r,e)),i}class V{constructor(t,i){this.u=[],this._$AN=void 0,this._$AD=t,this._$AM=i;}get parentNode(){return this._$AM.parentNode}get _$AU(){return this._$AM._$AU}v(t){var i;const{el:{content:s},parts:e}=this._$AD,o=(null!==(i=null==t?void 0:t.creationScope)&&void 0!==i?i:h).importNode(s,!0);A.currentNode=o;let n=A.nextNode(),l=0,r=0,d=e[0];for(;void 0!==d;){if(l===d.index){let i;2===d.type?i=new N(n,n.nextSibling,this,t):1===d.type?i=new d.ctor(n,d.name,d.strings,this,t):6===d.type&&(i=new I(n,this,t)),this.u.push(i),d=e[++r];}l!==(null==d?void 0:d.index)&&(n=A.nextNode(),l++);}return o}p(t){let i=0;for(const s of this.u)void 0!==s&&(void 0!==s.strings?(s._$AI(t,s,i),i+=s.strings.length-2):s._$AI(t[i])),i++;}}class N{constructor(t,i,s,e){var o;this.type=2,this._$AH=b,this._$AN=void 0,this._$AA=t,this._$AB=i,this._$AM=s,this.options=e,this._$Cm=null===(o=null==e?void 0:e.isConnected)||void 0===o||o;}get _$AU(){var t,i;return null!==(i=null===(t=this._$AM)||void 0===t?void 0:t._$AU)&&void 0!==i?i:this._$Cm}get parentNode(){let t=this._$AA.parentNode;const i=this._$AM;return void 0!==i&&11===t.nodeType&&(t=i.parentNode),t}get startNode(){return this._$AA}get endNode(){return this._$AB}_$AI(t,i=this){t=P(this,t,i),d(t)?t===b||null==t||""===t?(this._$AH!==b&&this._$AR(),this._$AH=b):t!==this._$AH&&t!==x&&this.g(t):void 0!==t._$litType$?this.$(t):void 0!==t.nodeType?this.T(t):c(t)?this.k(t):this.g(t);}O(t,i=this._$AB){return this._$AA.parentNode.insertBefore(t,i)}T(t){this._$AH!==t&&(this._$AR(),this._$AH=this.O(t));}g(t){this._$AH!==b&&d(this._$AH)?this._$AA.nextSibling.data=t:this.T(h.createTextNode(t)),this._$AH=t;}$(t){var i;const{values:s,_$litType$:e}=t,o="number"==typeof e?this._$AC(t):(void 0===e.el&&(e.el=C.createElement(e.h,this.options)),e);if((null===(i=this._$AH)||void 0===i?void 0:i._$AD)===o)this._$AH.p(s);else {const t=new V(o,this),i=t.v(this.options);t.p(s),this.T(i),this._$AH=t;}}_$AC(t){let i=T.get(t.strings);return void 0===i&&T.set(t.strings,i=new C(t)),i}k(t){u(this._$AH)||(this._$AH=[],this._$AR());const i=this._$AH;let s,e=0;for(const o of t)e===i.length?i.push(s=new N(this.O(r()),this.O(r()),this,this.options)):s=i[e],s._$AI(o),e++;e<i.length&&(this._$AR(s&&s._$AB.nextSibling,e),i.length=e);}_$AR(t=this._$AA.nextSibling,i){var s;for(null===(s=this._$AP)||void 0===s||s.call(this,!1,!0,i);t&&t!==this._$AB;){const i=t.nextSibling;t.remove(),t=i;}}setConnected(t){var i;void 0===this._$AM&&(this._$Cm=t,null===(i=this._$AP)||void 0===i||i.call(this,t));}}class S{constructor(t,i,s,e,o){this.type=1,this._$AH=b,this._$AN=void 0,this.element=t,this.name=i,this._$AM=e,this.options=o,s.length>2||""!==s[0]||""!==s[1]?(this._$AH=Array(s.length-1).fill(new String),this.strings=s):this._$AH=b;}get tagName(){return this.element.tagName}get _$AU(){return this._$AM._$AU}_$AI(t,i=this,s,e){const o=this.strings;let n=!1;if(void 0===o)t=P(this,t,i,0),n=!d(t)||t!==this._$AH&&t!==x,n&&(this._$AH=t);else {const e=t;let l,h;for(t=o[0],l=0;l<o.length-1;l++)h=P(this,e[s+l],i,l),h===x&&(h=this._$AH[l]),n||(n=!d(h)||h!==this._$AH[l]),h===b?t=b:t!==b&&(t+=(null!=h?h:"")+o[l+1]),this._$AH[l]=h;}n&&!e&&this.j(t);}j(t){t===b?this.element.removeAttribute(this.name):this.element.setAttribute(this.name,null!=t?t:"");}}class M extends S{constructor(){super(...arguments),this.type=3;}j(t){this.element[this.name]=t===b?void 0:t;}}const R=s?s.emptyScript:"";class k extends S{constructor(){super(...arguments),this.type=4;}j(t){t&&t!==b?this.element.setAttribute(this.name,R):this.element.removeAttribute(this.name);}}class H extends S{constructor(t,i,s,e,o){super(t,i,s,e,o),this.type=5;}_$AI(t,i=this){var s;if((t=null!==(s=P(this,t,i,0))&&void 0!==s?s:b)===x)return;const e=this._$AH,o=t===b&&e!==b||t.capture!==e.capture||t.once!==e.once||t.passive!==e.passive,n=t!==b&&(e===b||o);o&&this.element.removeEventListener(this.name,this,e),n&&this.element.addEventListener(this.name,this,t),this._$AH=t;}handleEvent(t){var i,s;"function"==typeof this._$AH?this._$AH.call(null!==(s=null===(i=this.options)||void 0===i?void 0:i.host)&&void 0!==s?s:this.element,t):this._$AH.handleEvent(t);}}class I{constructor(t,i,s){this.element=t,this.type=6,this._$AN=void 0,this._$AM=i,this.options=s;}get _$AU(){return this._$AM._$AU}_$AI(t){P(this,t);}}const z=i.litHtmlPolyfillSupport;null==z||z(C,N),(null!==(t=i.litHtmlVersions)&&void 0!==t?t:i.litHtmlVersions=[]).push("2.6.1");const Z=(t,i,s)=>{var e,o;const n=null!==(e=null==s?void 0:s.renderBefore)&&void 0!==e?e:i;let l=n._$litPart$;if(void 0===l){const t=null!==(o=null==s?void 0:s.renderBefore)&&void 0!==o?o:null;n._$litPart$=l=new N(i.insertBefore(r(),t),t,void 0,null!=s?s:{});}return l._$AI(t),l};
+var t;const i=window,s=i.trustedTypes,e=s?s.createPolicy("lit-html",{createHTML:t=>t}):void 0,o=`lit$${(Math.random()+"").slice(9)}$`,n="?"+o,l=`<${n}>`,h=document,r=(t="")=>h.createComment(t),d=t=>null===t||"object"!=typeof t&&"function"!=typeof t,u=Array.isArray,c=t=>u(t)||"function"==typeof(null==t?void 0:t[Symbol.iterator]),v=/<(?:(!--|\/[^a-zA-Z])|(\/?[a-zA-Z][^>\s]*)|(\/?$))/g,a=/-->/g,f=/>/g,_=RegExp(">|[ \t\n\f\r](?:([^\\s\"'>=/]+)([ \t\n\f\r]*=[ \t\n\f\r]*(?:[^ \t\n\f\r\"'`<>=]|(\"|')|))|$)","g"),m=/'/g,p=/"/g,$=/^(?:script|style|textarea|title)$/i,g=t=>(i,...s)=>({_$litType$:t,strings:i,values:s}),y=g(1),w=g(2),x=Symbol.for("lit-noChange"),b=Symbol.for("lit-nothing"),T=new WeakMap,A=h.createTreeWalker(h,129,null,!1),E=(t,i)=>{const s=t.length-1,n=[];let h,r=2===i?"<svg>":"",d=v;for(let i=0;i<s;i++){const s=t[i];let e,u,c=-1,g=0;for(;g<s.length&&(d.lastIndex=g,u=d.exec(s),null!==u);)g=d.lastIndex,d===v?"!--"===u[1]?d=a:void 0!==u[1]?d=f:void 0!==u[2]?($.test(u[2])&&(h=RegExp("</"+u[2],"g")),d=_):void 0!==u[3]&&(d=_):d===_?">"===u[0]?(d=null!=h?h:v,c=-1):void 0===u[1]?c=-2:(c=d.lastIndex-u[2].length,e=u[1],d=void 0===u[3]?_:'"'===u[3]?p:m):d===p||d===m?d=_:d===a||d===f?d=v:(d=_,h=void 0);const y=d===_&&t[i+1].startsWith("/>")?" ":"";r+=d===v?s+l:c>=0?(n.push(e),s.slice(0,c)+"$lit$"+s.slice(c)+o+y):s+o+(-2===c?(n.push(void 0),i):y);}const u=r+(t[s]||"<?>")+(2===i?"</svg>":"");if(!Array.isArray(t)||!t.hasOwnProperty("raw"))throw Error("invalid template strings array");return [void 0!==e?e.createHTML(u):u,n]};class C{constructor({strings:t,_$litType$:i},e){let l;this.parts=[];let h=0,d=0;const u=t.length-1,c=this.parts,[v,a]=E(t,i);if(this.el=C.createElement(v,e),A.currentNode=this.el.content,2===i){const t=this.el.content,i=t.firstChild;i.remove(),t.append(...i.childNodes);}for(;null!==(l=A.nextNode())&&c.length<u;){if(1===l.nodeType){if(l.hasAttributes()){const t=[];for(const i of l.getAttributeNames())if(i.endsWith("$lit$")||i.startsWith(o)){const s=a[d++];if(t.push(i),void 0!==s){const t=l.getAttribute(s.toLowerCase()+"$lit$").split(o),i=/([.?@])?(.*)/.exec(s);c.push({type:1,index:h,name:i[2],strings:t,ctor:"."===i[1]?M:"?"===i[1]?k:"@"===i[1]?H:S});}else c.push({type:6,index:h});}for(const i of t)l.removeAttribute(i);}if($.test(l.tagName)){const t=l.textContent.split(o),i=t.length-1;if(i>0){l.textContent=s?s.emptyScript:"";for(let s=0;s<i;s++)l.append(t[s],r()),A.nextNode(),c.push({type:2,index:++h});l.append(t[i],r());}}}else if(8===l.nodeType)if(l.data===n)c.push({type:2,index:h});else {let t=-1;for(;-1!==(t=l.data.indexOf(o,t+1));)c.push({type:7,index:h}),t+=o.length-1;}h++;}}static createElement(t,i){const s=h.createElement("template");return s.innerHTML=t,s}}function P(t,i,s=t,e){var o,n,l,h;if(i===x)return i;let r=void 0!==e?null===(o=s._$Co)||void 0===o?void 0:o[e]:s._$Cl;const u=d(i)?void 0:i._$litDirective$;return (null==r?void 0:r.constructor)!==u&&(null===(n=null==r?void 0:r._$AO)||void 0===n||n.call(r,!1),void 0===u?r=void 0:(r=new u(t),r._$AT(t,s,e)),void 0!==e?(null!==(l=(h=s)._$Co)&&void 0!==l?l:h._$Co=[])[e]=r:s._$Cl=r),void 0!==r&&(i=P(t,r._$AS(t,i.values),r,e)),i}class V{constructor(t,i){this.u=[],this._$AN=void 0,this._$AD=t,this._$AM=i;}get parentNode(){return this._$AM.parentNode}get _$AU(){return this._$AM._$AU}v(t){var i;const{el:{content:s},parts:e}=this._$AD,o=(null!==(i=null==t?void 0:t.creationScope)&&void 0!==i?i:h).importNode(s,!0);A.currentNode=o;let n=A.nextNode(),l=0,r=0,d=e[0];for(;void 0!==d;){if(l===d.index){let i;2===d.type?i=new N(n,n.nextSibling,this,t):1===d.type?i=new d.ctor(n,d.name,d.strings,this,t):6===d.type&&(i=new I(n,this,t)),this.u.push(i),d=e[++r];}l!==(null==d?void 0:d.index)&&(n=A.nextNode(),l++);}return o}p(t){let i=0;for(const s of this.u)void 0!==s&&(void 0!==s.strings?(s._$AI(t,s,i),i+=s.strings.length-2):s._$AI(t[i])),i++;}}class N{constructor(t,i,s,e){var o;this.type=2,this._$AH=b,this._$AN=void 0,this._$AA=t,this._$AB=i,this._$AM=s,this.options=e,this._$Cm=null===(o=null==e?void 0:e.isConnected)||void 0===o||o;}get _$AU(){var t,i;return null!==(i=null===(t=this._$AM)||void 0===t?void 0:t._$AU)&&void 0!==i?i:this._$Cm}get parentNode(){let t=this._$AA.parentNode;const i=this._$AM;return void 0!==i&&11===t.nodeType&&(t=i.parentNode),t}get startNode(){return this._$AA}get endNode(){return this._$AB}_$AI(t,i=this){t=P(this,t,i),d(t)?t===b||null==t||""===t?(this._$AH!==b&&this._$AR(),this._$AH=b):t!==this._$AH&&t!==x&&this.g(t):void 0!==t._$litType$?this.$(t):void 0!==t.nodeType?this.T(t):c(t)?this.k(t):this.g(t);}O(t,i=this._$AB){return this._$AA.parentNode.insertBefore(t,i)}T(t){this._$AH!==t&&(this._$AR(),this._$AH=this.O(t));}g(t){this._$AH!==b&&d(this._$AH)?this._$AA.nextSibling.data=t:this.T(h.createTextNode(t)),this._$AH=t;}$(t){var i;const{values:s,_$litType$:e}=t,o="number"==typeof e?this._$AC(t):(void 0===e.el&&(e.el=C.createElement(e.h,this.options)),e);if((null===(i=this._$AH)||void 0===i?void 0:i._$AD)===o)this._$AH.p(s);else {const t=new V(o,this),i=t.v(this.options);t.p(s),this.T(i),this._$AH=t;}}_$AC(t){let i=T.get(t.strings);return void 0===i&&T.set(t.strings,i=new C(t)),i}k(t){u(this._$AH)||(this._$AH=[],this._$AR());const i=this._$AH;let s,e=0;for(const o of t)e===i.length?i.push(s=new N(this.O(r()),this.O(r()),this,this.options)):s=i[e],s._$AI(o),e++;e<i.length&&(this._$AR(s&&s._$AB.nextSibling,e),i.length=e);}_$AR(t=this._$AA.nextSibling,i){var s;for(null===(s=this._$AP)||void 0===s||s.call(this,!1,!0,i);t&&t!==this._$AB;){const i=t.nextSibling;t.remove(),t=i;}}setConnected(t){var i;void 0===this._$AM&&(this._$Cm=t,null===(i=this._$AP)||void 0===i||i.call(this,t));}}class S{constructor(t,i,s,e,o){this.type=1,this._$AH=b,this._$AN=void 0,this.element=t,this.name=i,this._$AM=e,this.options=o,s.length>2||""!==s[0]||""!==s[1]?(this._$AH=Array(s.length-1).fill(new String),this.strings=s):this._$AH=b;}get tagName(){return this.element.tagName}get _$AU(){return this._$AM._$AU}_$AI(t,i=this,s,e){const o=this.strings;let n=!1;if(void 0===o)t=P(this,t,i,0),n=!d(t)||t!==this._$AH&&t!==x,n&&(this._$AH=t);else {const e=t;let l,h;for(t=o[0],l=0;l<o.length-1;l++)h=P(this,e[s+l],i,l),h===x&&(h=this._$AH[l]),n||(n=!d(h)||h!==this._$AH[l]),h===b?t=b:t!==b&&(t+=(null!=h?h:"")+o[l+1]),this._$AH[l]=h;}n&&!e&&this.j(t);}j(t){t===b?this.element.removeAttribute(this.name):this.element.setAttribute(this.name,null!=t?t:"");}}class M extends S{constructor(){super(...arguments),this.type=3;}j(t){this.element[this.name]=t===b?void 0:t;}}const R=s?s.emptyScript:"";class k extends S{constructor(){super(...arguments),this.type=4;}j(t){t&&t!==b?this.element.setAttribute(this.name,R):this.element.removeAttribute(this.name);}}class H extends S{constructor(t,i,s,e,o){super(t,i,s,e,o),this.type=5;}_$AI(t,i=this){var s;if((t=null!==(s=P(this,t,i,0))&&void 0!==s?s:b)===x)return;const e=this._$AH,o=t===b&&e!==b||t.capture!==e.capture||t.once!==e.once||t.passive!==e.passive,n=t!==b&&(e===b||o);o&&this.element.removeEventListener(this.name,this,e),n&&this.element.addEventListener(this.name,this,t),this._$AH=t;}handleEvent(t){var i,s;"function"==typeof this._$AH?this._$AH.call(null!==(s=null===(i=this.options)||void 0===i?void 0:i.host)&&void 0!==s?s:this.element,t):this._$AH.handleEvent(t);}}class I{constructor(t,i,s){this.element=t,this.type=6,this._$AN=void 0,this._$AM=i,this.options=s;}get _$AU(){return this._$AM._$AU}_$AI(t){P(this,t);}}const L={P:"$lit$",A:o,M:n,C:1,L:E,R:V,D:c,V:P,I:N,H:S,N:k,U:H,B:M,F:I},z=i.litHtmlPolyfillSupport;null==z||z(C,N),(null!==(t=i.litHtmlVersions)&&void 0!==t?t:i.litHtmlVersions=[]).push("2.6.1");const Z=(t,i,s)=>{var e,o;const n=null!==(e=null==s?void 0:s.renderBefore)&&void 0!==e?e:i;let l=n._$litPart$;if(void 0===l){const t=null!==(o=null==s?void 0:s.renderBefore)&&void 0!==o?o:null;n._$litPart$=l=new N(i.insertBefore(r(),t),t,void 0,null!=s?s:{});}return l._$AI(t),l};
 
 // Import the functions you need from the SDKs you need
 
@@ -21576,7 +34674,7 @@ function signOutUser() {
 onAuthStateChanged(auth, (user) => {
   if (user) {
     console.log("AUTH STATE CHANGED");
-    user.uid;
+    const uid = user.uid;
 
     // If there is an authenticated user, we render the normal view
     Z(view(), document.body);
