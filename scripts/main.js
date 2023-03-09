@@ -1,34 +1,34 @@
 
 
 var serial; // variable to hold an instance of the serialport library
-// var portName = "COM3"; //rename to the name of your port
-var portName = "/dev/cu.usbmodem141401";
+var portName = "COM3"; //rename to the name of your port
+var portNameMac = "/dev/cu.usbmodem141401";
 var dataarray = []; //some data coming in over serial!
 
 // Config
-const BOMB_COUNT = 2;
-const BOMB_FLASH_DURATION = 5;
-const BOMBS_PER_LEVEL = 1;
+// const BOMB_COUNT = 2;
+// const BOMB_FLASH_DURATION = 5;
+// const BOMBS_PER_LEVEL = 1;
 const BOSS_GRACE_PERIOD = 120;
 const BOSS_SPAWN_DELAY = 120;
 const INVULN_TIME = 20;
-let MAP_HEIGHT = 650;
+let MAP_HEIGHT = 700;
 const MODEL_LINE_ALPHA = 127;
 // const NUM_STARS = 300;
 const PLAYER_FIRE_RATE = 8;
-const PLAYER_HP = 9;
+const PLAYER_HP = 3;
 const PLAYER_RADIUS = 6;
 const PLAYER_SPEED = 4;
 const SCORE_UPDATE_SPEED = 4;
-const SLOWDOWN_ALPHA = 95;
-const SLOWDOWN_ALPHA_FULL = 127;
-const SLOWDOWN_DT = 0.3;
-const SLOWDOWN_DURATION = 120;
-const SLOWDOWN_WAIT_NEXT = 300;
+// const SLOWDOWN_ALPHA = 95;
+// const SLOWDOWN_ALPHA_FULL = 127;
+// const SLOWDOWN_DT = 0.3;
+// const SLOWDOWN_DURATION = 120;
+// const SLOWDOWN_WAIT_NEXT = 300;
 const SPAWN_GRACE_PERIOD = 60;
 // const STARFIELD_LERP = 0.2;
 // const STARFIELD_SPEED = 10;
-const UI_PANEL_HEIGHT = 100;
+const UI_PANEL_HEIGHT = 60;
 const WORLD_CEILING = -50;
 
 // Background
@@ -50,7 +50,7 @@ let numFPS = 0;
 let lowGraphics = false;
 let showFPS = false;
 let showHitboxes = false;
-let showStars = true;
+// let showStars = true;
 
 // Entities
 let boss;
@@ -191,12 +191,12 @@ function dt() {
 }
 
 // Draw bomb
-function drawBomb(x, y) {
-  fill("#007C21");
-  stroke(0, MODEL_LINE_ALPHA);
-  rectMode(CORNER);
-  rect(x, y, 20, 20);
-}
+// function drawBomb(x, y) {
+//   fill("#007C21");
+//   stroke(0, MODEL_LINE_ALPHA);
+//   rectMode(CORNER);
+//   rect(x, y, 20, 20);
+// }
 
 // Draw heart
 function drawHeart(x, y, empty) {
@@ -217,7 +217,7 @@ function loadLevel() {
     spawnTime = BOSS_GRACE_PERIOD;
 
     // Reset powerups
-    bombs += BOMBS_PER_LEVEL;
+    // bombs += BOMBS_PER_LEVEL;
 
     // Save score
     levelScore = score + scoreToAdd;
@@ -238,13 +238,13 @@ function reloadLevel() {
   // Reset cooldowns
   bossTime = 0;
   flashTime = 0;
-  nextSlowdownTime = 0;
-  slowTime = 0;
+  // nextSlowdownTime = 0;
+  // slowTime = 0;
   spawnTime = SPAWN_GRACE_PERIOD;
 
   // Reset powerups
-  bombs = BOMB_COUNT;
-  slowdownReady = true;
+  // bombs = BOMB_COUNT;
+  // slowdownReady = true;
 
   // Reset score
   score = levelScore;
@@ -325,11 +325,11 @@ function status() {
 }
 
 // Draw player bombs
-function uiBombs() {
-  for (let i = 0; i < bombs; i++) {
-    drawBomb(20 + 30 * i, height - UI_PANEL_HEIGHT + 60);
-  }
-}
+// function uiBombs() {
+//   for (let i = 0; i < bombs; i++) {
+//     drawBomb(20 + 30 * i, height - UI_PANEL_HEIGHT + 60);
+//   }
+// }
 
 // Draw player health
 function uiHealth() {
@@ -349,41 +349,41 @@ function uiPanel() {
 
   // Draw all UI panel elements
   strokeWeight(2);
-  uiBombs();
+  // uiBombs();
   uiHealth();
-  uiSlowdown();
+  // uiSlowdown();
   strokeWeight(1);
 }
 
 // Draw indicator of slowdown recharge status
-function uiSlowdown() {
-  push();
-  translate(width - 50, height - 50);
-  rotate(180);
-  stroke(0, MODEL_LINE_ALPHA);
+// function uiSlowdown() {
+//   push();
+//   translate(width - 50, height - 50);
+//   rotate(180);
+//   stroke(0, MODEL_LINE_ALPHA);
 
-  let loadPercent =
-    (SLOWDOWN_WAIT_NEXT - nextSlowdownTime) / SLOWDOWN_WAIT_NEXT;
-  let angle = 360 * loadPercent;
+//   let loadPercent =
+//     (SLOWDOWN_WAIT_NEXT - nextSlowdownTime) / SLOWDOWN_WAIT_NEXT;
+//   let angle = 360 * loadPercent;
 
-  // Draw blue/green portion
-  if (angle > 0) {
-    if (angle === 360) {
-      fill(55, 219, 208, SLOWDOWN_ALPHA_FULL);
-    } else {
-      fill(55, 219, 208, SLOWDOWN_ALPHA);
-    }
-    arc(0, 0, 40, 40, 90, 90 + angle);
-  }
+//   // Draw blue/green portion
+//   if (angle > 0) {
+//     if (angle === 360) {
+//       fill(55, 219, 208, SLOWDOWN_ALPHA_FULL);
+//     } else {
+//       fill(55, 219, 208, SLOWDOWN_ALPHA);
+//     }
+//     arc(0, 0, 40, 40, 90, 90 + angle);
+//   }
 
-  // Draw red portion
-  if (angle < 360) {
-    fill(231, 76, 60, SLOWDOWN_ALPHA);
-    arc(0, 0, 40, 40, 90 + angle, 90);
-  }
+//   // Draw red portion
+//   if (angle < 360) {
+//     fill(231, 76, 60, SLOWDOWN_ALPHA);
+//     arc(0, 0, 40, 40, 90 + angle, 90);
+//   }
 
-  pop();
-}
+//   pop();
+// }
 
 // Update the score by slowly adding
 function updateScore() {
@@ -399,23 +399,23 @@ function updateScore() {
 }
 
 // Use a bomb powerup
-function useBomb() {
-  if (bombs > 0 && !paused) {
-    bombs--;
-    bullets = [];
-    pl.invulnTime = INVULN_TIME;
-    flashTime = BOMB_FLASH_DURATION;
-  }
-}
+// function useBomb() {
+//   if (bombs > 0 && !paused) {
+//     bombs--;
+//     bullets = [];
+//     pl.invulnTime = INVULN_TIME;
+//     flashTime = BOMB_FLASH_DURATION;
+//   }
+// }
 
 // Use a slowdown powerup
-function useSlowdown() {
-  if (nextSlowdownTime === 0 && !paused) {
-    slowdownReady = false;
-    slowTime = SLOWDOWN_DURATION;
-    nextSlowdownTime = SLOWDOWN_WAIT_NEXT;
-  }
-}
+// function useSlowdown() {
+//   if (nextSlowdownTime === 0 && !paused) {
+//     slowdownReady = false;
+//     slowTime = SLOWDOWN_DURATION;
+//     nextSlowdownTime = SLOWDOWN_WAIT_NEXT;
+//   }
+// }
 
 function startGame() {
   resetGame();
@@ -450,13 +450,13 @@ function setup() {
 
   // Begin level
   resetGame();
-  var button = createButton("start");
-  button.mousePressed(startGame);
+  var start = createButton("START");
+  start.class("button startButton");
+  start.mousePressed(startGame);
+  start.parent("start");
 }
 
 function draw() {
-// console.log(dataarray);
-
   // Draw the background and starfield
   // flashTime > 0 ? background(255) : background(starfield.bg);
   background(0);
@@ -503,7 +503,7 @@ function draw() {
 
 function keyPressed() {
   // Use a bomb
-  if (key === "C" || key === "M") useBomb();
+  // if (key === "C" || key === "M") useBomb();
 
   // Toggle FPS display
   if (key === "F") {
@@ -516,11 +516,11 @@ function keyPressed() {
   }
 
   // Toggle low graphics settings
-  if (key === "G") {
-    showStars = lowGraphics;
-    lowGraphics = !lowGraphics;
-    if (lowGraphics) ps = [];
-  }
+  // if (key === "G") {
+  //   showStars = lowGraphics;
+  //   lowGraphics = !lowGraphics;
+  //   if (lowGraphics) ps = [];
+  // }
 
   // Toggle hitbox display
   if (key === "H") showHitboxes = !showHitboxes;
@@ -532,8 +532,8 @@ function keyPressed() {
   // if (key === 'T') blackStarfield = !blackStarfield;
 
   // Use a slowdown
-  if (key === "X" || key === "N") useSlowdown();
+  // if (key === "X" || key === "N") useSlowdown();
 
   // Toggle rendering stars
-  if (key === "Y") showStars = !showStars;
+  // if (key === "Y") showStars = !showStars;
 }

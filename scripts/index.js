@@ -8,15 +8,15 @@ import {
   updateProfile,
 } from "firebase/auth";
 import {
-    getFirestore,
-    collection,
-    addDoc,
-    getDocs,
-    onSnapshot,
-    query,
-    orderBy,
-    doc,
-  } from "firebase/firestore";
+  getFirestore,
+  collection,
+  addDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  orderBy,
+  doc,
+} from "firebase/firestore";
 import { html, render } from "lit-html";
 
 // Your web app's Firebase configuration
@@ -28,7 +28,7 @@ const firebaseConfig = {
   storageBucket: "in-class-5d43f.appspot.com",
   messagingSenderId: "502579561666",
   appId: "1:502579561666:web:790f068d08d3fa2604e75b",
-  measurementId: "G-2K4GBM0PZ8"
+  measurementId: "G-2K4GBM0PZ8",
 };
 
 // Initialize Firebase
@@ -45,7 +45,7 @@ function signInAnon() {
   signInAnonymously(auth)
     .then(() => {
       console.log(auth.currentUser);
-      updateProfile(auth.currentUser, { displayName: username })
+      updateProfile(auth.currentUser, { displayName: username });
     })
     .catch((error) => {
       console.error(`Error ${error.code}: ${error.message}.`);
@@ -80,64 +80,60 @@ onAuthStateChanged(auth, (user) => {
 });
 
 async function sendMessage(message) {
-console.log("Sending a score!");
-const user = auth.currentUser;
-// Add some data to the messages collection
-try {
+  console.log("Sending a score!");
+  const user = auth.currentUser;
+  // Add some data to the messages collection
+  try {
     const docRef = await addDoc(collection(db, "score"), {
-    displayName: user.displayName,
-    uid: user.uid,
-    content: Number(message),
+      displayName: user.displayName,
+      uid: user.uid,
+      content: Number(message),
     });
     console.log("Document written with ID: ", docRef.id);
-} catch (e) {
+  } catch (e) {
     console.error("Error adding document: ", e);
-}
-}
-
-window.sendMessage = sendMessage
-
-function handleInput(e) {
-  if (e.key == "Enter") {
-    sendMessage(e.target.value);
-    e.target.value = "";
   }
 }
 
+window.sendMessage = sendMessage;
 
 function updateValue(event) {
   username = event.target.value;
 }
 
 function signInView() {
-  return html`
-  <h3>Enter User name:</h3>
-  <input type="text" id="inputValue" @input=${updateValue}>
-  <button class="sign-in" @click=${signInAnon}>Sign in</button>
-  <h3>Or:</h3>
-  <button class="sign-in" @click=${signInAnon}>Anonymous Sign in</button>`;
+  return html` 
+  <div class="board">
+    <h3 style="text-align:left;">Enter Your ID:</h3>
+    <input type="text" @input=${updateValue} />
+    <button class="button" @click=${signInAnon}>Log In</button>
+    <h3 style="text-align:left;">Or:</h3>
+    <button class="button" @click=${signInAnon}>Anonymous Log in</button>
+  </div>`;
 }
 
 function view() {
   let user = auth.currentUser;
   return html`
-  <h1>Game</h1>
-  <div id="top-bar">
+  <div class="board">
+  <h4 style="margin-bottom: 5%">
   <span
     >Signed in as
-    ${user.isAnonymous ? username : auth.currentUser.displayName}</span
+    ${user.isAnonymous ? username : auth.currentUser.displayName}</h4
   >
-  <button @click=${signOutUser}>Sign Out</button>
-</div>
-    <input type="text" @keydown=${handleInput} />
-    <div id="rank">
-    <div class="row">
-      ${messages.map((msg) => html`<div class="message">${msg.displayName}</div>`)}
-    </div>
-    <div class="row">
-      ${messages.map((msg) => html`<div class="message">${msg.content}</div>`)}
-    </div>
-    </div>`;
+  <button class="button" @click=${signOutUser}>Sign Out</button>
+  
+  <div id="rank">
+  <div class="row">
+    ${messages.map(
+      (msg) => html`<div class="message">${msg.displayName}</div>`
+    )}
+  </div>
+  <div class="row">
+    ${messages.map((msg) => html`<div class="message">${msg.content}</div>`)}
+  </div>
+  </div>
+  </div>`;
 }
 
 async function getAllMessages() {
