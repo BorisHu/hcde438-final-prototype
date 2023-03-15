@@ -1,7 +1,7 @@
 # bullethell
-A bullet hell game in HTML5 and JS, using the p5.js library.
-Recording score and display leaderboard with Firebase.
-[Link](https://borishu.github.io/4389Final/)
+* A bullet hell game in HTML5 and JS, using the p5.js library.
+* Recording score and display leaderboard with Firebase.
+* [Link](https://borishu.github.io/4389Final/)
 
 ### Arrow Key Controls
 * Arrow keys to move.
