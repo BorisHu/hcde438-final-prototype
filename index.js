@@ -34628,13 +34628,12 @@ var t;const i=window,s=i.trustedTypes,e=s?s.createPolicy("lit-html",{createHTML:
 // Your web app's Firebase configuration
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSyCsZZXaT-JnC_fCdt14KzAGsSNNdsDv04M",
-  authDomain: "in-class-5d43f.firebaseapp.com",
-  projectId: "in-class-5d43f",
-  storageBucket: "in-class-5d43f.appspot.com",
-  messagingSenderId: "502579561666",
-  appId: "1:502579561666:web:790f068d08d3fa2604e75b",
-  measurementId: "G-2K4GBM0PZ8",
+  apiKey: "AIzaSyD5UVUYsscdWbWT0CeAcuJn3Z0ma1kVWBE",
+  authDomain: "bullethell-game.firebaseapp.com",
+  projectId: "bullethell-game",
+  storageBucket: "bullethell-game.appspot.com",
+  messagingSenderId: "605049523666",
+  appId: "1:605049523666:web:deb0c20d7d49b77831cc0b"
 };
 
 // Initialize Firebase
@@ -34662,7 +34661,7 @@ function signInAnon() {
 function signOutUser() {
   signOut(auth)
     .then(() => {
-      username = "anon";
+      username = "anonymous";
       console.info("Sign out was successful");
     })
     .catch((error) => {
@@ -34720,6 +34719,7 @@ function signInView() {
 
 function view() {
   let user = auth.currentUser;
+  var order = Array.from({length: 10}, (_, i) => i + 1);
   return y`
   <div class="board">
   <h4 style="margin-bottom: 5%">
@@ -34728,15 +34728,16 @@ function view() {
     ${user.isAnonymous ? username : auth.currentUser.displayName}</h4
   >
   <button class="button" @click=${signOutUser}>Sign Out</button>
-  
+  <h2>Learderboard</h2>
   <div id="rank">
   <div class="row">
-    ${messages.map(
-      (msg) => y`<div class="message">${msg.displayName}</div>`
-    )}
+    ${order.map((num) => y`<div>${num}</div>`)}
   </div>
   <div class="row">
-    ${messages.map((msg) => y`<div class="message">${msg.content}</div>`)}
+    ${messages.map((msg) => y`<div>${msg.displayName}</div>`)}
+  </div>
+  <div class="row">
+    ${messages.map((msg) => y`<div>${msg.content}</div>`)}
   </div>
   </div>
   </div>`;
@@ -34746,7 +34747,7 @@ async function getAllMessages() {
   messages = [];
 
   const querySnapshot = await zl(
-    ol(messagesRef, dl("content", "desc"))
+    ol(messagesRef, dl("content", "desc"), wl(10))
   );
   querySnapshot.forEach((doc) => {
     let msgData = doc.data();
